@@ -1,0 +1,22 @@
+# FROM public.ecr.aws/edgedelta/ed-lambda-extension:latest as extensions-layer
+FROM golang:alpine
+
+# Move already built binary.
+ADD ./tools/logs_compactor/logcompactor /edgedelta/logcompactor
+
+# Deploy certificates
+RUN apk update && apk add --no-cache ca-certificates && update-ca-certificates
+
+# Extension  code
+# WORKDIR /opt/extensions
+# COPY --from=extensions-layer /opt/extensions/ .
+
+# No need use to entrypoint from parent image
+ENTRYPOINT []
+
+# Working directory can not be empty to run in aws lambda, based on below error
+# IMAGE Launch error: the working directory '' is invalid, it needs to be an absolute path
+WORKDIR /
+
+# Run log compactor service
+CMD  ["/edgedelta/logcompactor"]
