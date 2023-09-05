@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
-	"github.com/edgedelta/edgedelta-forwarder/forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/cfg"
 )
 
 var (
@@ -72,11 +72,11 @@ func NewPusher(conf *cfg.Config) *Pusher {
 }
 
 // blocking
-func (p *Pusher) Push(ctx context.Context, buf *bytes.Buffer) error {
+func (p *Pusher) Push(ctx context.Context, payload []byte) error {
 	err := DoWithExpBackoffC(ctx, func() error {
 		reqCtx, cancel := context.WithTimeout(ctx, p.pushTimeout)
 		defer cancel()
-		return p.makeHTTPRequest(reqCtx, buf)
+		return p.makeHTTPRequest(reqCtx, payload)
 	}, p.retryInterval)
 	if err != nil {
 		return fmt.Errorf("failed to push logs, err: %v", err)
@@ -84,8 +84,8 @@ func (p *Pusher) Push(ctx context.Context, buf *bytes.Buffer) error {
 	return nil
 }
 
-func (p *Pusher) makeHTTPRequest(ctx context.Context, buf *bytes.Buffer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, buf)
+func (p *Pusher) makeHTTPRequest(ctx context.Context, payload []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("failed to create http post request: %s, err: %v", p.endpoint, err)
 	}
@@ -107,8 +107,7 @@ func (p *Pusher) sendWithCaringResponseCode(req *http.Request) error {
 		}
 		body := string(bodyBytes)
 		if body != "" {
-			s := fmt.Sprintf("%s returned unexpected status code: %v response: %s", resp.StatusCode, body)
-			return fmt.Errorf(s, body)
+			return fmt.Errorf("%s returned unexpected status code: %v response: %s", p.name, resp.StatusCode, body)
 		}
 		return fmt.Errorf("%s returned unexpected status code: %v", p.name, resp.StatusCode)
 	}

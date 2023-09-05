@@ -24,6 +24,8 @@ func GetConfig() (*Config, error) {
 	if endpoint == "" {
 		err := fmt.Errorf("ED_ENDPOINT environment variable is required")
 		errs = append(errs, err)
+	} else {
+		config.EDEndpoint = endpoint
 	}
 
 	pt := os.Getenv("ED_PUSH_TIMEOUT_MS")
@@ -47,7 +49,7 @@ func GetConfig() (*Config, error) {
 			config.RetryInterval = time.Duration(retryInterval) * time.Millisecond
 		}
 	} else {
-		config.RetryInterval = 10 * time.Millisecond
+		config.RetryInterval = 100 * time.Millisecond
 	}
 
 	return config, errors.Join(errs...)
