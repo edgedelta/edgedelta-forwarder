@@ -14,6 +14,12 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Test scripts
+scripts/
+
+# Deploy artifacts
+bin/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
