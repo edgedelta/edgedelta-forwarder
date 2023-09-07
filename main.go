@@ -69,7 +69,7 @@ func main() {
 }
 
 func init() {
-	region := os.Getenv("AWS_REGION")
+	region = os.Getenv("AWS_REGION")
 	if region == "" {
 		log.Fatalf("Failed to get AWS region from environment")
 	}
@@ -99,6 +99,24 @@ func getFunctionName(logGroup string) (string, bool) {
 	return name, true
 }
 
+func getLambdaTags(ctx context.Context, functionARN string) map[string]string {
+	if tags, ok := resourceARNToTagsCache[functionARN]; ok {
+		return tags
+	}
+	tagsMap, err := resourceCl.GetResourceTags(ctx, functionARN)
+	if err != nil {
+		log.Printf("Failed to get resource tags for ARN: %s, err: %v", functionARN, err)
+	} else if len(tagsMap) == 0 {
+		log.Printf("Failed to find tags for ARN: %s", functionARN)
+	} else {
+		for r, t := range tagsMap {
+			log.Printf("Found tags: %v for ARN: %s", t, r)
+			resourceARNToTagsCache[r] = t
+		}
+	}
+	return resourceARNToTagsCache[functionARN]
+}
+
 func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -121,22 +139,15 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 	functionVersion := lambdacontext.FunctionVersion
 	foundLambdaLogGroup := false
 	if name, ok := getFunctionName(data.LogGroup); ok {
+		log.Printf("Got lambda name: %s from log group: %s", name, data.LogGroup)
 		foundLambdaLogGroup = true
 		functionName = name
 		functionVersion = ""
 		functionARN = buildFunctionARN(name, data.Owner)
 	}
+	var tags map[string]string
 	if foundLambdaLogGroup && config.ForwardLambdaTags {
-		tagsMap, err := resourceCl.GetResourceTags(ctx)
-		if err != nil {
-			log.Printf("Failed to get resource tags for ARN: %s, err: %v", functionARN, err)
-		} else if len(tagsMap) == 0 {
-			log.Printf("Failed to find tags for ARN: %s", functionARN)
-		} else {
-			for r, t := range tagsMap {
-				resourceARNToTagsCache[r] = t
-			}
-		}
+		tags = getLambdaTags(ctx, functionARN)
 	}
 
 	edLog := &edLog{
@@ -146,10 +157,11 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 				Name:    functionName,
 				Version: functionVersion,
 			},
-			LambdaTags: resourceARNToTagsCache[functionARN],
+			LambdaTags: tags,
 		},
 		logsData: logsData(data),
 	}
+
 	b, err := json.Marshal(edLog)
 	if err != nil {
 		log.Printf("Failed to marshal logs, err: %v", err)
