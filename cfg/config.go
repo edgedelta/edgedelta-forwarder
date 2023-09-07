@@ -13,6 +13,7 @@ type Config struct {
 	EDEndpoint    string
 	PushTimeout   time.Duration
 	RetryInterval time.Duration
+	ForwardLambdaTags bool
 }
 
 func GetConfig() (*Config, error) {
@@ -52,5 +53,6 @@ func GetConfig() (*Config, error) {
 		config.RetryInterval = 100 * time.Millisecond
 	}
 
+	config.ForwardLambdaTags = os.Getenv("ED_FORWARD_LAMBDA_TAGS") == "true"
 	return config, errors.Join(errs...)
 }
