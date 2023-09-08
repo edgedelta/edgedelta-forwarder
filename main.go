@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -11,7 +14,10 @@ import (
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
 	"github.com/edgedelta/edgedelta-forwarder/push"
+	"github.com/edgedelta/edgedelta-forwarder/resource"
 )
+
+const lambdaLogGroupPrefix = "/aws/lambda/"
 
 type faas struct {
 	Name    string `json:"name"`
@@ -23,12 +29,17 @@ type cloud struct {
 }
 
 type common struct {
-	Cloud *cloud `json:"cloud"`
-	Faas  *faas  `json:"faas"`
+	Cloud      *cloud            `json:"cloud"`
+	Faas       *faas             `json:"faas"`
+	LambdaTags map[string]string `json:"lambda_tags,omitempty"`
 }
 
 var (
-	pusher *push.Pusher
+	region                 string
+	config                 *cfg.Config
+	pusher                 *push.Pusher
+	resourceARNToTagsCache map[string]map[string]string
+	resourceCl             *resource.DefaultClient
 )
 
 type logsData events.CloudwatchLogsData
@@ -58,11 +69,52 @@ func main() {
 }
 
 func init() {
-	config, err := cfg.GetConfig()
+	region = os.Getenv("AWS_REGION")
+	if region == "" {
+		log.Fatalf("Failed to get AWS region from environment")
+	}
+	c, err := cfg.GetConfig()
 	if err != nil {
 		log.Fatalf("Failed to get config from environment variables, err: %v", err)
 	}
+	config = c
+	resCl, err := resource.NewAWSClient()
+	if err != nil {
+		log.Fatalf("Failed to create AWS resourcegroupstaggingapi client, err: %v", err)
+	}
+	resourceCl = resCl
+	resourceARNToTagsCache = make(map[string]map[string]string)
 	pusher = push.NewPusher(config)
+}
+
+func buildFunctionARN(functionName, accountID string) string {
+	return fmt.Sprintf("arn:aws:lambda:%s:%s:function:%s", region, accountID, functionName)
+}
+
+func getFunctionName(logGroup string) (string, bool) {
+	name := strings.TrimPrefix(logGroup, lambdaLogGroupPrefix)
+	if len(name) == len(logGroup) {
+		return "", false
+	}
+	return name, true
+}
+
+func getLambdaTags(ctx context.Context, functionARN string) map[string]string {
+	if tags, ok := resourceARNToTagsCache[functionARN]; ok {
+		return tags
+	}
+	tagsMap, err := resourceCl.GetResourceTags(ctx, functionARN)
+	if err != nil {
+		log.Printf("Failed to get resource tags for ARN: %s, err: %v", functionARN, err)
+	} else if len(tagsMap) == 0 {
+		log.Printf("Failed to find tags for ARN: %s", functionARN)
+	} else {
+		for r, t := range tagsMap {
+			log.Printf("Found tags: %v for ARN: %s", t, r)
+			resourceARNToTagsCache[r] = t
+		}
+	}
+	return resourceARNToTagsCache[functionARN]
 }
 
 func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) error {
@@ -71,31 +123,48 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 			log.Printf("Recovering from panic in handleRequest, err: %v", r)
 		}
 	}()
-	var functionArn string
+	var functionARN string
 	lc, ok := lambdacontext.FromContext(ctx)
 	if !ok {
 		log.Printf("Failed to create lambda context")
 	} else {
-		functionArn = lc.InvokedFunctionArn
+		functionARN = lc.InvokedFunctionArn
 	}
 	data, err := logsEvent.AWSLogs.Parse()
 	if err != nil {
 		log.Printf("Failed to parse logs event, err: %v", err)
 		return err
 	}
+	functionName := lambdacontext.FunctionName
+	functionVersion := lambdacontext.FunctionVersion
+	foundLambdaLogGroup := false
+	if name, ok := getFunctionName(data.LogGroup); ok {
+		log.Printf("Got lambda name: %s from log group: %s", name, data.LogGroup)
+		foundLambdaLogGroup = true
+		functionName = name
+		functionVersion = ""
+		functionARN = buildFunctionARN(name, data.Owner)
+	}
+	var tags map[string]string
+	if foundLambdaLogGroup && config.ForwardLambdaTags {
+		tags = getLambdaTags(ctx, functionARN)
+	}
+
 	edLog := &edLog{
 		common: common{
-			Cloud: &cloud{ResourceID: functionArn},
+			Cloud: &cloud{ResourceID: functionARN},
 			Faas: &faas{
-				Name:    lambdacontext.FunctionName,
-				Version: lambdacontext.FunctionVersion,
+				Name:    functionName,
+				Version: functionVersion,
 			},
+			LambdaTags: tags,
 		},
 		logsData: logsData(data),
 	}
+
 	b, err := json.Marshal(edLog)
 	if err != nil {
-		log.Printf("Failed to marshal logs data, err: %v", err)
+		log.Printf("Failed to marshal logs, err: %v", err)
 		return err
 	}
 	// blocks until context deadline
