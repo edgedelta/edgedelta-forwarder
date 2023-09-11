@@ -46,26 +46,24 @@ func NewEnricher(conf *cfg.Config, resourceCl *resource.DefaultClient) *Enricher
 	}
 }
 
-func (e *Enricher) GetEDCommon(ctx context.Context, accountID string) *Common {
-	logGroup := lambdacontext.LogGroupName
-	functionName := lambdacontext.FunctionName
-	functionVersion := lambdacontext.FunctionVersion
+func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, accountID string) *Common {
 
-	var functionARN string
+	var forwarderARN string
 	lc, ok := lambdacontext.FromContext(ctx)
 	if !ok {
 		log.Printf("Failed to create lambda context")
 	} else {
-		functionARN = lc.InvokedFunctionArn
+		forwarderARN = lc.InvokedFunctionArn
 	}
 
 	var tags map[string]string
-	if e.forwardForwarderTags {
-		tags = e.getLambdaTags(ctx, functionARN)
+	if forwarderARN != "" && e.forwardForwarderTags {
+		tags = e.getLambdaTags(ctx, forwarderARN)
 	} else {
 		tags = make(map[string]string)
 	}
 
+	var functionName, functionVersion, functionARN string
 	foundLambdaLogGroup := false
 	if name, ok := getFunctionName(logGroup); ok {
 		log.Printf("Got lambda name: %s from log group: %s", name, logGroup)
@@ -73,6 +71,10 @@ func (e *Enricher) GetEDCommon(ctx context.Context, accountID string) *Common {
 		functionName = name
 		functionVersion = ""
 		functionARN = buildFunctionARN(name, accountID, e.region)
+	} else {
+		functionName = lambdacontext.FunctionName
+		functionVersion = lambdacontext.FunctionVersion
+		functionARN = forwarderARN
 	}
 
 	if foundLambdaLogGroup && e.forwardLambdaTags {

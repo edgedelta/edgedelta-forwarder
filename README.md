@@ -7,7 +7,8 @@ AWS lambda function to forward logs from AWS to Edge Delta agent.
 - ED_ENDPOINT: Edge Delta hosted agent endpoint. (Required)
 
 - ED_FORWARD_LAMBDA_TAGS: If set to true, lambda tags are fetched by building the lambda function ARN from the log group name. Requires "tag.GetResources" permission.
-    This only works if log group name is in the format "/aws/lambda/<lambda_name>". 
+    This only works if log group name is in the format "/aws/lambda/<lambda_name>".
+- ED_FORWARD_FORWARDER_TAGS: If set to true, forwarder lambda's own tags are fetched. Requires "tag.GetResources" permission.
 - ED_PUSH_TIMEOUT_SEC: Push timeout is the total duration of waiting for to send one batch of logs (in seconds). Default is 10.
 - ED_RETRY_INTERVAL_MS: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down. Default is 100.
 

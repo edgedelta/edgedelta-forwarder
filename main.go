@@ -74,7 +74,7 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 		log.Printf("Failed to parse logs event, err: %v", err)
 		return err
 	}
-	common := enricher.GetEDCommon(ctx, data.Owner)
+	common := enricher.GetEDCommon(ctx, data.LogGroup, data.Owner)
 
 	edLog := &edLog{
 		edCommon:   edCommon(*common),
