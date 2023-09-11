@@ -86,6 +86,7 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 		log.Printf("Failed to marshal logs, err: %v", err)
 		return err
 	}
+	log.Printf("Sending %d bytes of logs", len(b))
 	// blocks until context deadline
 	if err := pusher.Push(ctx, b); err != nil {
 		return err
