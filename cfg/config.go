@@ -10,16 +10,25 @@ import (
 
 // Config for storing all parameters
 type Config struct {
-	EDEndpoint    string
-	PushTimeout   time.Duration
-	RetryInterval time.Duration
-	ForwardLambdaTags bool
+	Region               string
+	EDEndpoint           string
+	PushTimeout          time.Duration
+	RetryInterval        time.Duration
+	ForwardLambdaTags    bool
+	ForwardForwarderTags bool
 }
 
 func GetConfig() (*Config, error) {
 	config := &Config{}
 
 	var errs []error
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		err := fmt.Errorf("failed to get AWS_REGION from environment")
+		errs = append(errs, err)
+	} else {
+		config.Region = region
+	}
 
 	endpoint := os.Getenv("ED_ENDPOINT")
 	if endpoint == "" {
@@ -29,16 +38,16 @@ func GetConfig() (*Config, error) {
 		config.EDEndpoint = endpoint
 	}
 
-	pt := os.Getenv("ED_PUSH_TIMEOUT_MS")
+	pt := os.Getenv("ED_PUSH_TIMEOUT_SEC")
 	if pt != "" {
 		pushTimeout, err := strconv.Atoi(pt)
 		if err != nil {
 			errs = append(errs, err)
 		} else {
-			config.PushTimeout = time.Duration(pushTimeout) * time.Millisecond
+			config.PushTimeout = time.Duration(pushTimeout) * time.Second
 		}
 	} else {
-		config.PushTimeout = 1 * time.Second
+		config.PushTimeout = 10 * time.Second
 	}
 
 	ri := os.Getenv("ED_RETRY_INTERVAL_MS")
@@ -54,5 +63,7 @@ func GetConfig() (*Config, error) {
 	}
 
 	config.ForwardLambdaTags = os.Getenv("ED_FORWARD_LAMBDA_TAGS") == "true"
+	config.ForwardForwarderTags = os.Getenv("ED_FORWARD_FORWARDER_TAGS") == "true"
+
 	return config, errors.Join(errs...)
 }
