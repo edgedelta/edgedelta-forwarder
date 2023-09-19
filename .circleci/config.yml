@@ -1,0 +1,98 @@
+version: 2.1
+
+executors:
+  edimg-build:
+    docker:
+      - image: 233765244907.dkr.ecr.us-west-2.amazonaws.com/build:latest
+  cimg-base:
+    docker:
+      - image: cimg/base:stable
+
+jobs:
+  get_approval:
+    executor: cimg-base
+    environment:
+      APPROVAL_CHECK_PERIOD: 10     # seconds
+      APPROVAL_MAX_ATTEMPT: 720     # 2 hours
+    steps:
+      - checkout
+      - run:
+          name: Wait for approval
+          command: |
+            mkdir -p /tmp/workspace
+            export RELEASE_NAME="${CIRCLE_TAG}"
+            export RELEASE_TYPE="forwarder"
+            ./deploy/jira_get_approval.sh
+      - persist_to_workspace:       # to be used by jira_notify_result.sh
+          root: /tmp/workspace
+          paths:
+          - approval-ticket-id
+      - run:
+          when: on_fail
+          command: |
+            ./deploy/post_to_slack.sh "$CIRCLE_JOB failed. See job logs at $CIRCLE_BUILD_URL" || true
+            SUCCESS=0 ./deploy/jira_notify_result.sh
+            
+  build_and_publish:
+    executor: edimg-build
+    parameters:
+      arch-type:
+        type: string
+        default: "amd64"
+    steps:
+      - checkout
+      - run:
+          name: Build forwarder
+          command: |
+            ./deploy/build.sh "prod" "<< parameters.arch-type >>" "${CIRCLE_TAG#v}"
+      - run:
+          name: Publish forwarder
+          command: |
+            ./deploy/publish.sh "prod" "<< parameters.arch-type >>" "${CIRCLE_TAG#v}"
+      - run:
+          when: on_fail
+          command: |
+            ./deploy/post_to_slack.sh "$CIRCLE_JOB failed. See job logs at $CIRCLE_BUILD_URL" || true
+            SUCCESS=0 ./deploy/jira_notify_result.sh
+
+  release_success:
+    executor: cimg-base
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      - run:
+          name: Send api release success
+          command: |
+            SUCCESS=1 ./deploy/jira_notify_result.sh
+      - run:
+          name: Send api release failure
+          when: on_fail
+          command: |
+            ./deploy/post_to_slack.sh "$CIRCLE_JOB failed. See job logs at $CIRCLE_BUILD_URL" || true
+            SUCCESS=0 ./deploy/jira_notify_result.sh
+
+workflows:
+  edgedelta_forwarder_release:
+    jobs:
+      - get_approval: &edgedelta_forwarder_release_filter
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v\d+\.\d+\.\d+$/
+          context: serverless-publish
+      - build_and_publish:
+          <<: *edgedelta_forwarder_release_filter
+          matrix:
+            parameters:
+              arch-type:
+                - "amd64"
+                - "arm64"
+          name: build_and_publish_<< matrix.arch-type >>
+          requires:
+            - get_approval
+      - release_success:
+          <<: *edgedelta_forwarder_release_filter
+          requires:
+            - build_and_publish

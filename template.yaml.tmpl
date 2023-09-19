@@ -1,0 +1,49 @@
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: EdgeDelta-Forwarder-{ARCH_TYPE}
+    Description: Edge Delta lambda function to forward logs from AWS Cloudwatch to Edge Delta agent.
+    Author: Edge Delta
+    ReadmeUrl: README.md
+    Labels: ['edgedelta', 'lambda', 'logs', 'analytics', 'monitoring']
+    LicenseUrl: LICENSE
+    SpdxLicenseId: Apache-2.0
+    HomePageUrl: https://github.com/edgedelta/edgedelta-forwarder
+    SemanticVersion: {VERSION}
+    SourceCodeUrl: https://github.com/edgedelta/edgedelta-forwarder
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Outputs:
+  EdgeDeltaForwarderArn:
+    Description: EdgeDeltaForwarder Function ARN
+    Value:
+      Fn::GetAtt:
+      - EdgeDeltaForwarder
+      - Arn
+Resources:
+  EdgeDeltaForwarder:
+    Type: AWS::Serverless::Function
+    Properties:
+      Architectures: 
+      - {COMPATIBLE_ARCHITECTURE}
+      Description: Edge Delta lambda function to forward logs from AWS Cloudwatch to Edge Delta agent.
+      CodeUri: s3://{BUCKET}/{FILE_NAME}
+      Handler: bootstrap
+      Runtime: provided.al2
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - Statement:
+        - Sid: TagReadOnlyAccessPolicy
+          Effect: Allow
+          Action:
+          - tag:GetResources
+          Resource: '*'
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EdgeDeltaForwarder.Arn
+      Action: lambda:InvokeFunction
+      Principal: logs.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+      SourceAccount: !Sub ${AWS::AccountId}
