@@ -14,23 +14,23 @@ Metadata:
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: "AWS::Serverless-2016-10-31"
 Parameters:
-  ED_ENDPOINT
+  EDEndpoint:
     Type: String
     Description: Edge Delta hosted agent endpoint
     Default: ''
-  ED_FORWARD_LAMBDA_TAGS
+  EDForwardLambdaTags:
     Type: String
     Description: If set to true, lambda tags are fetched by building the lambda function ARN from the log group name. Requires "tag.GetResources" permission. This only works if log group name is in the format "/aws/lambda/<lambda_name>"
     Default: 'false'
-  ED_FORWARD_FORWARDER_TAGS:
+  EDForwardForwarderTags:
     Type: String
     Description: If set to true, forwarder lambda's own tags are fetched. Requires "tag.GetResources" permission
-    Default 'false'
-  ED_PUSH_TIMEOUT_SEC:
+    Default: 'false'
+  EDPushTimeoutSec:
     Type: Number
     Description: Push timeout is the total duration of waiting for to send one batch of logs (in seconds)
     Default: 10
-  ED_RETRY_INTERVAL_MS
+  EDRetryIntervalMs:
     Type: Number
     Description: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down
     Default: 100
@@ -53,11 +53,11 @@ Resources:
       Runtime: provided.al2
       Environment:
         Variables:
-          ED_ENDPOINT: !Ref ED_ENDPOINT
-          ED_FORWARD_LAMBDA_TAGS: !Ref ED_FORWARD_LAMBDA_TAGS
-          ED_FORWARD_FORWARDER_TAGS: !Ref ED_FORWARD_FORWARDER_TAGS
-          ED_PUSH_TIMEOUT_SEC: !Ref ED_PUSH_TIMEOUT_SEC
-          ED_RETRY_INTERVAL_MS: !Ref ED_RETRY_INTERVAL_MS
+          ED_ENDPOINT: !Ref EDEndpoint
+          ED_FORWARD_LAMBDA_TAGS: !Ref EDForwardLambdaTags
+          ED_FORWARD_FORWARDER_TAGS: !Ref EDForwardForwarderTags
+          ED_PUSH_TIMEOUT_SEC: !Ref EDPushTimeoutSec
+          ED_RETRY_INTERVAL_MS: !Ref EDRetryIntervalMs
       Policies:
       - AWSLambdaBasicExecutionRole
       - Statement:
