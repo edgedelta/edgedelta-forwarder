@@ -1,0 +1,78 @@
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: EdgeDelta-Forwarder-{ARCH_TYPE}
+    Description: Edge Delta lambda function to forward logs from AWS Cloudwatch to Edge Delta agent.
+    Author: Edge Delta
+    ReadmeUrl: README.md
+    Labels: ['edgedelta', 'lambda', 'logs', 'analytics', 'monitoring']
+    LicenseUrl: LICENSE
+    SpdxLicenseId: Apache-2.0
+    HomePageUrl: https://github.com/edgedelta/edgedelta-forwarder
+    SemanticVersion: {VERSION}
+    SourceCodeUrl: https://github.com/edgedelta/edgedelta-forwarder
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Parameters:
+  EDEndpoint:
+    Type: String
+    Description: Edge Delta hosted agent endpoint
+    Default: ''
+  EDForwardLambdaTags:
+    Type: String
+    Description: If set to true, lambda tags are fetched by building the lambda function ARN from the log group name. Requires "tag.GetResources" permission. This only works if log group name is in the format "/aws/lambda/<lambda_name>"
+    Default: 'false'
+  EDForwardForwarderTags:
+    Type: String
+    Description: If set to true, forwarder lambda's own tags are fetched. Requires "tag.GetResources" permission
+    Default: 'false'
+  EDPushTimeoutSec:
+    Type: Number
+    Description: Push timeout is the total duration of waiting for to send one batch of logs (in seconds)
+    Default: 10
+  EDRetryIntervalMs:
+    Type: Number
+    Description: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down
+    Default: 100
+Outputs:
+  EdgeDeltaForwarderArn:
+    Description: EdgeDeltaForwarder Function ARN
+    Value:
+      Fn::GetAtt:
+      - EdgeDeltaForwarder
+      - Arn
+Resources:
+  EdgeDeltaForwarder:
+    Type: AWS::Serverless::Function
+    Properties:
+      Architectures: 
+      - {COMPATIBLE_ARCHITECTURE}
+      Description: Edge Delta lambda function to forward logs from AWS Cloudwatch to Edge Delta agent.
+      CodeUri: s3://{BUCKET}/{FILE_NAME}
+      Handler: bootstrap
+      Runtime: provided.al2
+      Timeout: 180
+      Environment:
+        Variables:
+          ED_ENDPOINT: !Ref EDEndpoint
+          ED_FORWARD_LAMBDA_TAGS: !Ref EDForwardLambdaTags
+          ED_FORWARD_FORWARDER_TAGS: !Ref EDForwardForwarderTags
+          ED_PUSH_TIMEOUT_SEC: !Ref EDPushTimeoutSec
+          ED_RETRY_INTERVAL_MS: !Ref EDRetryIntervalMs
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - Statement:
+        - Sid: TagReadOnlyAccessPolicy
+          Effect: Allow
+          Action:
+          - tag:GetResources
+          Resource: '*'
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt EdgeDeltaForwarder.Arn
+      Action: lambda:InvokeFunction
+      Principal: logs.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+      SourceAccount: !Sub ${AWS::AccountId}
