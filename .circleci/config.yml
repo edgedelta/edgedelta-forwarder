@@ -41,6 +41,8 @@ jobs:
         default: "amd64"
     steps:
       - checkout
+      - attach_workspace:
+          at: /tmp/workspace
       - run:
           name: Build forwarder
           command: |
