@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -65,5 +66,12 @@ func GetConfig() (*Config, error) {
 	config.ForwardLambdaTags = os.Getenv("ED_FORWARD_LAMBDA_TAGS") == "true"
 	config.ForwardForwarderTags = os.Getenv("ED_FORWARD_FORWARDER_TAGS") == "true"
 
-	return config, errors.Join(errs...)
+	errorsAsStr := make([]string, 0, len(errs))
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		errorsAsStr = append(errorsAsStr, err.Error())
+	}
+	return config, errors.New(strings.Join(errorsAsStr, "\n"))
 }
