@@ -51,6 +51,7 @@ Resources:
       CodeUri: s3://{BUCKET}/{FILE_NAME}
       Handler: bootstrap
       Runtime: provided.al2
+      Timeout: 180
       Environment:
         Variables:
           ED_ENDPOINT: !Ref EDEndpoint
