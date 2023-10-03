@@ -8,12 +8,11 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/parser"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
 )
 
-const lambdaLogGroupPrefix = "/aws/lambda/"
-
-var resourceARNToTagsCache = make(map[string]map[string]string)
+var resourceTagsCache = make(map[string]map[string]string)
 
 type faas struct {
 	Name    string `json:"name"`
@@ -33,21 +32,22 @@ type Common struct {
 type Enricher struct {
 	resourceCl           *resource.DefaultClient
 	region               string
-	forwardLambdaTags    bool
 	forwardForwarderTags bool
+	forwardSourceTags    bool
+	forwardLogGroupTags  bool
 }
 
 func NewEnricher(conf *cfg.Config, resourceCl *resource.DefaultClient) *Enricher {
 	return &Enricher{
-		forwardLambdaTags:    conf.ForwardLambdaTags,
 		forwardForwarderTags: conf.ForwardForwarderTags,
+		forwardSourceTags:    conf.ForwardSourceTags,
+		forwardLogGroupTags:  conf.ForwardLogGroupTags,
 		region:               conf.Region,
 		resourceCl:           resourceCl,
 	}
 }
 
 func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, accountID string) *Common {
-
 	var forwarderARN string
 	lc, ok := lambdacontext.FromContext(ctx)
 	if !ok {
@@ -56,69 +56,63 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, accountID string) 
 		forwarderARN = lc.InvokedFunctionArn
 	}
 
-	var tags map[string]string
+	var arnsToGetTags []string
 	if forwarderARN != "" && e.forwardForwarderTags {
-		tags = e.getLambdaTags(ctx, forwarderARN)
-	} else {
-		tags = make(map[string]string)
+		arnsToGetTags = append(arnsToGetTags, forwarderARN)
 	}
 
-	var functionName, functionVersion, functionARN string
-	foundLambdaLogGroup := false
-	if name, ok := getFunctionName(logGroup); ok {
-		log.Printf("Got lambda name: %s from log group: %s", name, logGroup)
-		foundLambdaLogGroup = true
-		functionName = name
-		functionVersion = ""
-		functionARN = buildFunctionARN(name, accountID, e.region)
-	} else {
-		functionName = lambdacontext.FunctionName
-		functionVersion = lambdacontext.FunctionVersion
-		functionARN = forwarderARN
+	if e.forwardLogGroupTags {
+		arn := parser.BuildServiceARN("logs", accountID, e.region, fmt.Sprintf("log-group:%s:*", logGroup))
+		arnsToGetTags = append(arnsToGetTags, arn)
 	}
 
-	if foundLambdaLogGroup && e.forwardLambdaTags {
-		t := e.getLambdaTags(ctx, functionARN)
-		for k, v := range t {
-			tags[k] = v
+	functionName := lambdacontext.FunctionName
+	functionVersion := lambdacontext.FunctionVersion
+
+	if e.forwardSourceTags {
+		if arns, ok := parser.GetSourceARNsFromLogGroup(accountID, e.region, logGroup); ok {
+			arnsToGetTags = append(arnsToGetTags, arns...)
+		} else {
+			log.Printf("Failed to get source ARNs from log group: %s", logGroup)
 		}
 	}
+
 	return &Common{
-		Cloud: &cloud{ResourceID: functionARN},
+		Cloud: &cloud{ResourceID: forwarderARN},
 		Faas: &faas{
 			Name:    functionName,
 			Version: functionVersion,
 		},
-		LambdaTags: tags,
+		LambdaTags: e.getResourceTags(ctx, arnsToGetTags),
 	}
 }
 
-func (e *Enricher) getLambdaTags(ctx context.Context, functionARN string) map[string]string {
-	if tags, ok := resourceARNToTagsCache[functionARN]; ok {
+func (e *Enricher) getResourceTags(ctx context.Context, arns []string) map[string]string {
+	tagsCacheKey := getTagsCacheKey(arns...)
+	if tags, ok := resourceTagsCache[tagsCacheKey]; ok {
 		return tags
 	}
-	tagsMap, err := e.resourceCl.GetResourceTags(ctx, functionARN)
+	tagsMap, err := e.resourceCl.GetResourceTags(ctx, arns...)
 	if err != nil {
-		log.Printf("Failed to get resource tags for ARN: %s, err: %v", functionARN, err)
-	} else if len(tagsMap) == 0 {
-		log.Printf("Failed to find tags for ARN: %s", functionARN)
-	} else {
-		for r, t := range tagsMap {
-			log.Printf("Found tags: %v for ARN: %s", t, r)
-			resourceARNToTagsCache[r] = t
+		log.Printf("Failed to get resource tags for ARNs: %v, err: %v", arns, err)
+		return nil
+	}
+	if len(tagsMap) == 0 {
+		log.Printf("Failed to find tags for ARNs: %v", arns)
+		return nil
+	}
+
+	resourceTagsCache[tagsCacheKey] = map[string]string{}
+	for r, t := range tagsMap {
+		log.Printf("Found tags: %v for ARN: %s", t, r)
+		for k, v := range t {
+			resourceTagsCache[tagsCacheKey][k] = v
 		}
 	}
-	return resourceARNToTagsCache[functionARN]
+
+	return resourceTagsCache[tagsCacheKey]
 }
 
-func getFunctionName(logGroup string) (string, bool) {
-	name := strings.TrimPrefix(logGroup, lambdaLogGroupPrefix)
-	if len(name) == len(logGroup) {
-		return "", false
-	}
-	return name, true
-}
-
-func buildFunctionARN(functionName, accountID, region string) string {
-	return fmt.Sprintf("arn:aws:lambda:%s:%s:function:%s", region, accountID, functionName)
+func getTagsCacheKey(arns ...string) string {
+	return strings.Join(arns, ",")
 }
