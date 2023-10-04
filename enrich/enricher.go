@@ -31,13 +31,13 @@ type Common struct {
 }
 
 type Enricher struct {
-	resourceCl           *resource.DefaultClient
+	resourceCl           resource.Client
 	region               string
 	forwardLambdaTags    bool
 	forwardForwarderTags bool
 }
 
-func NewEnricher(conf *cfg.Config, resourceCl *resource.DefaultClient) *Enricher {
+func NewEnricher(conf *cfg.Config, resourceCl resource.Client) *Enricher {
 	return &Enricher{
 		forwardLambdaTags:    conf.ForwardLambdaTags,
 		forwardForwarderTags: conf.ForwardForwarderTags,
@@ -100,13 +100,15 @@ func (e *Enricher) getLambdaTags(ctx context.Context, functionARN string) map[st
 	tagsMap, err := e.resourceCl.GetResourceTags(ctx, functionARN)
 	if err != nil {
 		log.Printf("Failed to get resource tags for ARN: %s, err: %v", functionARN, err)
-	} else if len(tagsMap) == 0 {
+		return map[string]string{}
+	}
+	if len(tagsMap) == 0 {
 		log.Printf("Failed to find tags for ARN: %s", functionARN)
-	} else {
-		for r, t := range tagsMap {
-			log.Printf("Found tags: %v for ARN: %s", t, r)
-			resourceARNToTagsCache[r] = t
-		}
+		return map[string]string{}
+	}
+	for r, t := range tagsMap {
+		log.Printf("Found tags: %v for ARN: %s", t, r)
+		resourceARNToTagsCache[r] = t
 	}
 	return resourceARNToTagsCache[functionARN]
 }
