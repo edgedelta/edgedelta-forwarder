@@ -53,7 +53,7 @@ func GetConfig() (*Config, error) {
 	}
 
 	ri := os.Getenv("ED_RETRY_INTERVAL_MS")
-	if pt != "" {
+	if ri != "" {
 		retryInterval, err := strconv.Atoi(ri)
 		if err != nil {
 			errs = append(errs, err)
@@ -67,6 +67,10 @@ func GetConfig() (*Config, error) {
 	config.ForwardForwarderTags = os.Getenv("ED_FORWARD_FORWARDER_TAGS") == "true"
 	config.ForwardSourceTags = os.Getenv("ED_FORWARD_SOURCE_TAGS") == "true"
 	config.ForwardLogGroupTags = os.Getenv("ED_FORWARD_LOG_GROUP_TAGS") == "true"
+
+	if len(errs) == 0 {
+		return config, nil
+	}
 
 	errorsAsStr := make([]string, 0, len(errs))
 	for _, err := range errs {
