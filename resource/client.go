@@ -9,11 +9,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 )
 
+type Client interface {
+	GetResourceTags(ctx context.Context, resourceARNs ...string) (map[string]map[string]string, error)
+}
+
 type DefaultClient struct {
 	svc *resourcegroupstaggingapi.Client
 }
 
-func NewAWSClient() (*DefaultClient, error) {
+func NewAWSClient() (Client, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS SDK config, err: %v", err)
