@@ -8,19 +8,24 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/parser"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
+	"github.com/edgedelta/edgedelta-forwarder/utils"
 )
 
 var resourceTagsCache = make(map[string]map[string]string)
 
 type faas struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
 type cloud struct {
 	ResourceID string `json:"resource_id"`
+	AccountID  string `json:"account_id"`
+	Region     string `json:"region"`
 }
 
 type Common struct {
@@ -31,23 +36,25 @@ type Common struct {
 
 type Enricher struct {
 	resourceCl           *resource.DefaultClient
+	lambdaCl             *lambda.DefaultClient
 	region               string
 	forwardForwarderTags bool
 	forwardSourceTags    bool
 	forwardLogGroupTags  bool
 }
 
-func NewEnricher(conf *cfg.Config, resourceCl *resource.DefaultClient) *Enricher {
+func NewEnricher(conf *cfg.Config, resourceCl *resource.DefaultClient, lambdaCl *lambda.DefaultClient) *Enricher {
 	return &Enricher{
 		forwardForwarderTags: conf.ForwardForwarderTags,
 		forwardSourceTags:    conf.ForwardSourceTags,
 		forwardLogGroupTags:  conf.ForwardLogGroupTags,
 		region:               conf.Region,
 		resourceCl:           resourceCl,
+		lambdaCl:             lambdaCl,
 	}
 }
 
-func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, accountID string) *Common {
+func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, accountID string) *Common {
 	var forwarderARN string
 	lc, ok := lambdacontext.FromContext(ctx)
 	if !ok {
@@ -77,13 +84,30 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, accountID string) 
 		}
 	}
 
+	tags := e.getResourceTags(ctx, arnsToGetTags)
+	if tags == nil {
+		tags = make(map[string]string)
+	}
+
+	if forwarderARN != "" {
+		tags["host.arch"] = utils.GetRuntimeArchitecture()
+		config, err := e.lambdaCl.GetFunctionConfiguration(forwarderARN)
+		if err != nil {
+			log.Printf("Failed to get function configuration for ARN: %s, err: %v", forwarderARN, err)
+		} else {
+			tags["process.runtime.name"] = *config.Runtime
+			tags["faas.memory_size"] = fmt.Sprintf("%d", *config.MemorySize)
+		}
+	}
+
 	return &Common{
-		Cloud: &cloud{ResourceID: forwarderARN},
+		Cloud: &cloud{ResourceID: forwarderARN, AccountID: accountID, Region: e.region},
 		Faas: &faas{
-			Name:    functionName,
-			Version: functionVersion,
+			Name:      functionName,
+			Version:   functionVersion,
+			RequestID: logStream,
 		},
-		LambdaTags: e.getResourceTags(ctx, arnsToGetTags),
+		LambdaTags: tags,
 	}
 }
 

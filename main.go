@@ -12,6 +12,8 @@ import (
 	"github.com/edgedelta/edgedelta-forwarder/enrich"
 	"github.com/edgedelta/edgedelta-forwarder/push"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
+
+	lambdaCl "github.com/edgedelta/edgedelta-forwarder/lambda"
 )
 
 var (
@@ -57,7 +59,11 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to create AWS resourcegroupstaggingapi client, err: %v", err)
 	}
-	enricher = enrich.NewEnricher(config, resCl)
+	lambdaClient, err := lambdaCl.NewClient(config.Region)
+	if err != nil {
+		log.Fatalf("Failed to create AWS lambda client, err: %v", err)
+	}
+	enricher = enrich.NewEnricher(config, resCl, lambdaClient)
 
 	pusher = push.NewPusher(config)
 }
@@ -74,7 +80,7 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 		log.Printf("Failed to parse logs event, err: %v", err)
 		return err
 	}
-	common := enricher.GetEDCommon(ctx, data.LogGroup, data.Owner)
+	common := enricher.GetEDCommon(ctx, data.LogGroup, data.LogStream, data.Owner)
 
 	edLog := &edLog{
 		edCommon:   edCommon(*common),

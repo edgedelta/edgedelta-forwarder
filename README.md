@@ -18,7 +18,7 @@ AWS lambda function to forward logs from AWS to Edge Delta agent.
 
 ### Build executable: 
 ```
-GOOS=linux GOARCH=amd64 go build -tags lambda.norpc -o bootstap main.go
+GOOS=linux GOARCH=amd64 go build -tags lambda.norpc -o bootstrap main.go
 ```
 Executable’s name must be “bootstrap”
 
