@@ -68,9 +68,9 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 		arnsToGetTags = append(arnsToGetTags, forwarderARN)
 	}
 
+	logGroupARN := parser.BuildServiceARN("logs", accountID, e.region, fmt.Sprintf("log-group:%s:*", logGroup))
 	if e.forwardLogGroupTags {
-		arn := parser.BuildServiceARN("logs", accountID, e.region, fmt.Sprintf("log-group:%s:*", logGroup))
-		arnsToGetTags = append(arnsToGetTags, arn)
+		arnsToGetTags = append(arnsToGetTags, logGroupARN)
 	}
 
 	if e.forwardSourceTags {
@@ -108,7 +108,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 	}
 
 	return &Common{
-		Cloud: &cloud{ResourceID: forwarderARN, AccountID: accountID, Region: e.region},
+		Cloud: &cloud{ResourceID: getResourceID(arnsToGetTags, forwarderARN, logGroupARN), AccountID: accountID, Region: e.region},
 		Faas: &faas{
 			Name:      functionName,
 			Version:   functionVersion,
@@ -136,6 +136,7 @@ func (e *Enricher) getResourceTags(ctx context.Context, arns []string) map[strin
 
 	resourceTagsCache[tagsCacheKey] = map[string]string{}
 	for r, t := range tagsMap {
+		resourceTagsCache[r] = t
 		log.Printf("Found tags: %v for ARN: %s", t, r)
 		for k, v := range t {
 			resourceTagsCache[tagsCacheKey][k] = v
@@ -158,4 +159,18 @@ func getRuntimeArchitecture(functionARN, forwarderARN string, archs []*string) s
 		architectures = append(architectures, *a)
 	}
 	return strings.Join(architectures, ",")
+}
+
+func getResourceID(arns []string, forwarderARN, logGroupARN string) string {
+	// If any tag exists for an ARN other than forwarder or log group, return that ARN as resource ID
+	for _, arn := range arns {
+		if arn != forwarderARN && arn != logGroupARN {
+			if m, ok := resourceTagsCache[arn]; ok {
+				if len(m) > 0 {
+					return arn
+				}
+			}
+		}
+	}
+	return forwarderARN
 }
