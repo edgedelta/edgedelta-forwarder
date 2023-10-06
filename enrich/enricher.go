@@ -73,11 +73,8 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 		arnsToGetTags = append(arnsToGetTags, arn)
 	}
 
-	functionName := lambdacontext.FunctionName
-	functionVersion := lambdacontext.FunctionVersion
-
 	if e.forwardSourceTags {
-		if arns, ok := parser.GetSourceARNsFromLogGroup(accountID, e.region, logGroup); ok {
+		if arns, ok := parser.GetSourceARNsFromLogGroup(accountID, e.region, logGroup, logStream); ok {
 			arnsToGetTags = append(arnsToGetTags, arns...)
 		} else {
 			log.Printf("Failed to get source ARNs from log group: %s", logGroup)
@@ -89,14 +86,24 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 		tags = make(map[string]string)
 	}
 
-	if forwarderARN != "" {
-		tags["host.arch"] = utils.GetRuntimeArchitecture()
-		config, err := e.lambdaCl.GetFunctionConfiguration(forwarderARN)
+	functionARN := forwarderARN
+	functionName := lambdacontext.FunctionName
+	functionVersion := lambdacontext.FunctionVersion
+	// Assign function arn name if source is lambda
+	if arn, name, ok := parser.GetFunctionARNAndNameIfSourceIsLambda(logGroup, accountID, e.region); ok {
+		functionARN = arn
+		functionName = name
+		functionVersion = ""
+	}
+
+	if functionARN != "" {
+		config, err := e.lambdaCl.GetFunctionConfiguration(functionARN)
 		if err != nil {
-			log.Printf("Failed to get function configuration for ARN: %s, err: %v", forwarderARN, err)
+			log.Printf("Failed to get function configuration for ARN: %s, err: %v", functionARN, err)
 		} else {
 			tags["process.runtime.name"] = *config.Runtime
 			tags["faas.memory_size"] = fmt.Sprintf("%d", *config.MemorySize)
+			tags["host.arch"] = getRuntimeArchitecture(functionARN, forwarderARN, config.Architectures)
 		}
 	}
 
@@ -105,7 +112,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 		Faas: &faas{
 			Name:      functionName,
 			Version:   functionVersion,
-			RequestID: logStream,
+			RequestID: lc.AwsRequestID,
 		},
 		LambdaTags: tags,
 	}
@@ -116,7 +123,8 @@ func (e *Enricher) getResourceTags(ctx context.Context, arns []string) map[strin
 	if tags, ok := resourceTagsCache[tagsCacheKey]; ok {
 		return tags
 	}
-	tagsMap, err := e.resourceCl.GetResourceTags(ctx, arns...)
+	log.Printf("Getting resource tags for ARNs: %v", arns)
+	tagsMap, err := e.resourceCl.GetResourceTags(context.Background(), arns...)
 	if err != nil {
 		log.Printf("Failed to get resource tags for ARNs: %v, err: %v", arns, err)
 		return nil
@@ -139,4 +147,15 @@ func (e *Enricher) getResourceTags(ctx context.Context, arns []string) map[strin
 
 func getTagsCacheKey(arns ...string) string {
 	return strings.Join(arns, ",")
+}
+
+func getRuntimeArchitecture(functionARN, forwarderARN string, archs []*string) string {
+	if len(archs) == 0 || functionARN == forwarderARN {
+		return utils.GetRuntimeArchitecture()
+	}
+	var architectures []string
+	for _, a := range archs {
+		architectures = append(architectures, *a)
+	}
+	return strings.Join(architectures, ",")
 }
