@@ -17,9 +17,10 @@ import (
 var resourceTagsCache = make(map[string]map[string]string)
 
 type faas struct {
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	RequestID string `json:"request_id,omitempty"`
+	Name       string  `json:"name"`
+	Version    string  `json:"version"`
+	RequestID  string  `json:"request_id,omitempty"`
+	MemorySize *string `json:"memory_size,omitempty"`
 }
 
 type cloud struct {
@@ -29,9 +30,9 @@ type cloud struct {
 }
 
 type Common struct {
-	Cloud      *cloud            `json:"cloud"`
-	Faas       *faas             `json:"faas"`
-	LambdaTags map[string]string `json:"lambda_tags,omitempty"`
+	Cloud    *cloud            `json:"cloud"`
+	Faas     *faas             `json:"faas"`
+	FaasTags map[string]string `json:"faas.tags,omitempty"`
 }
 
 type Enricher struct {
@@ -96,25 +97,31 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 		functionVersion = ""
 	}
 
+	var memorySize *string
 	if functionARN != "" {
 		config, err := e.lambdaCl.GetFunctionConfiguration(functionARN)
 		if err != nil {
 			log.Printf("Failed to get function configuration for ARN: %s, err: %v", functionARN, err)
 		} else {
 			tags["process.runtime.name"] = *config.Runtime
-			tags["faas.memory_size"] = fmt.Sprintf("%d", *config.MemorySize)
 			tags["host.arch"] = getRuntimeArchitecture(functionARN, forwarderARN, config.Architectures)
+
+			mSize := fmt.Sprintf("%d", *config.MemorySize)
+			memorySize = &mSize
 		}
 	}
+	tags["aws.log.group.name"] = logGroup
+	tags["aws.log.stream.name"] = logStream
 
 	return &Common{
 		Cloud: &cloud{ResourceID: getResourceID(arnsToGetTags, forwarderARN, logGroupARN), AccountID: accountID, Region: e.region},
 		Faas: &faas{
-			Name:      functionName,
-			Version:   functionVersion,
-			RequestID: lc.AwsRequestID,
+			Name:       functionName,
+			Version:    functionVersion,
+			RequestID:  lc.AwsRequestID,
+			MemorySize: memorySize,
 		},
-		LambdaTags: tags,
+		FaasTags: tags,
 	}
 }
 
@@ -124,9 +131,9 @@ func (e *Enricher) getResourceTags(ctx context.Context, arns []string) map[strin
 		return tags
 	}
 	log.Printf("Getting resource tags for ARNs: %v", arns)
-	tagsMap, err := e.resourceCl.GetResourceTags(context.Background(), arns...)
+	tagsMap, err := e.resourceCl.GetResourceTags(ctx, arns...)
+	log.Printf("Failed to get resource tags for ARNs: %v, err: %v", arns, err)
 	if err != nil {
-		log.Printf("Failed to get resource tags for ARNs: %v, err: %v", arns, err)
 		return nil
 	}
 	if len(tagsMap) == 0 {
