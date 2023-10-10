@@ -22,8 +22,13 @@ var (
 	enricher *enrich.Enricher
 )
 
-type edLogsData events.CloudwatchLogsData
 type edCommon enrich.Common
+
+type edLogsData struct {
+	SubscriptionFilters []string                        `json:"subscriptionFilters"`
+	MessageType         string                          `json:"messageType"`
+	LogEvents           []events.CloudwatchLogsLogEvent `json:"logEvents"`
+}
 
 type edLog struct {
 	edCommon
@@ -35,12 +40,16 @@ type HandlerFn func(context.Context, events.CloudwatchLogsEvent) error
 func withGracefulShutdown(handler HandlerFn, gracePeriod time.Duration) HandlerFn {
 	return func(ctx context.Context, logsEvent events.CloudwatchLogsEvent) error {
 		deadline, ok := ctx.Deadline()
+		log.Printf("Deadline: %v, ok: %v", deadline, ok)
 		if !ok {
+			log.Printf("No deadline set, running handler without graceful shutdown")
 			return handler(ctx, logsEvent)
 		}
 		shorterDeadline := deadline.Add(-gracePeriod)
+		log.Printf("Shorter deadline: %v", shorterDeadline)
 		graceCtx, cancel := context.WithDeadline(ctx, shorterDeadline)
 		defer cancel()
+		log.Printf("Running handler with graceful shutdown")
 		return handler(graceCtx, logsEvent)
 	}
 }
@@ -83,8 +92,12 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 	common := enricher.GetEDCommon(ctx, data.LogGroup, data.LogStream, data.Owner)
 
 	edLog := &edLog{
-		edCommon:   edCommon(*common),
-		edLogsData: edLogsData(data),
+		edCommon: edCommon(*common),
+		edLogsData: edLogsData{
+			SubscriptionFilters: data.SubscriptionFilters,
+			MessageType:         data.MessageType,
+			LogEvents:           data.LogEvents,
+		},
 	}
 
 	b, err := json.Marshal(edLog)
