@@ -187,14 +187,8 @@ func (e *Enricher) prepareResourceTags(ctx context.Context, arns []string) {
 		return
 	}
 
+	// Empty map with key as all ARNs is added to cache to avoid repeated calls to resource service
 	resourceARNToTagsCache[tagsCacheKey] = map[string]string{}
-	for r, t := range tagsMap {
-		resourceARNToTagsCache[r] = t
-		log.Printf("Found tags: %v for ARN: %s", t, r)
-		for k, v := range t {
-			resourceARNToTagsCache[tagsCacheKey][k] = v
-		}
-	}
 }
 
 func getTagsCacheKey(arns ...string) string {
