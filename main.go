@@ -23,11 +23,8 @@ var (
 )
 
 type edCommon enrich.Common
-
 type edLogsData struct {
-	SubscriptionFilters []string                        `json:"cloudwatch.subscription_filters"`
-	MessageType         string                          `json:"cloudwatch.message_type"`
-	LogEvents           []events.CloudwatchLogsLogEvent `json:"logEvents"`
+	LogEvents []events.CloudwatchLogsLogEvent `json:"logEvents"`
 }
 
 type edLog struct {
@@ -85,14 +82,12 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 		log.Printf("Failed to parse logs event, err: %v", err)
 		return err
 	}
-	common := enricher.GetEDCommon(ctx, data.LogGroup, data.LogStream, data.Owner)
+	common := enricher.GetEDCommon(ctx, data.SubscriptionFilters, data.MessageType, data.LogGroup, data.LogStream, data.Owner)
 
 	edLog := &edLog{
 		edCommon: edCommon(*common),
 		edLogsData: edLogsData{
-			SubscriptionFilters: data.SubscriptionFilters,
-			MessageType:         data.MessageType,
-			LogEvents:           data.LogEvents,
+			LogEvents: data.LogEvents,
 		},
 	}
 

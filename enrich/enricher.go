@@ -30,12 +30,18 @@ type cloud struct {
 	Region     string `json:"region"`
 }
 
+type awsLogs struct {
+	LogGroup               string            `json:"log.group.name"`
+	LogGroupARN            string            `json:"log.group.arn"`
+	LogGroupTags           map[string]string `json:"log.group.tags,omitempty"`
+	LogStream              string            `json:"log.stream.name"`
+	LogMessageType         string            `json:"log.message.type"`
+	LogSubscriptionFilters []string          `json:"log.subscription_filters"`
+}
+
 type awsCommon struct {
-	LogGroup     string            `json:"log.group.name"`
-	LogGroupARN  string            `json:"log.group.arn"`
-	LogGroupTags map[string]string `json:"log.group.tags,omitempty"`
-	LogStream    string            `json:"log.stream.name"`
-	ServiceTags  map[string]string `json:"service.tags,omitempty"`
+	awsLogs
+	ServiceTags map[string]string `json:"service.tags,omitempty"`
 }
 
 type Common struct {
@@ -66,7 +72,7 @@ func NewEnricher(conf *cfg.Config, resourceCl resource.Client, lambdaCl lambda.C
 	}
 }
 
-func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, accountID string) *Common {
+func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string, messageType, logGroup, logStream, accountID string) *Common {
 	var forwarderARN string
 	lc, ok := lambdacontext.FromContext(ctx)
 	if !ok {
@@ -132,11 +138,15 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 			Tags:       faasTags,
 		},
 		AwsCommon: &awsCommon{
-			LogGroup:     logGroup,
-			LogGroupARN:  logGroupARN,
-			LogGroupTags: logGroupTags,
-			LogStream:    logStream,
-			ServiceTags:  sourceTags,
+			awsLogs: awsLogs{
+				LogGroup:               logGroup,
+				LogGroupARN:            logGroupARN,
+				LogGroupTags:           logGroupTags,
+				LogStream:              logStream,
+				LogMessageType:         messageType,
+				LogSubscriptionFilters: subscriptionFilters,
+			},
+			ServiceTags: sourceTags,
 		},
 		HostArchitecture:   hostArchitecture,
 		ProcessRuntimeName: processRuntimeName,
