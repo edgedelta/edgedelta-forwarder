@@ -109,7 +109,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 	if functionARN != "" {
 		function, err := e.lambdaCl.GetFunction(functionARN)
 		if err != nil {
-			log.Printf("Failed to get function configuration for ARN: %s, err: %v", functionARN, err)
+			log.Printf("Failed to get function for ARN: %s, err: %v", functionARN, err)
 		} else {
 			functionVersion = *function.Configuration.Version
 			processRuntimeName = *function.Configuration.Runtime
