@@ -35,15 +35,15 @@ type awsCommon struct {
 	LogGroupARN  string            `json:"log.group.arn"`
 	LogGroupTags map[string]string `json:"log.group.tags,omitempty"`
 	LogStream    string            `json:"log.stream.name"`
+	ServiceTags  map[string]string `json:"service.tags,omitempty"`
 }
 
 type Common struct {
-	Cloud              *cloud            `json:"cloud"`
-	Faas               *faas             `json:"faas"`
-	AwsCommon          *awsCommon        `json:"aws"`
-	Tags               map[string]string `json:"tags,omitempty"`
-	HostArchitecture   string            `json:"host.arch,omitempty"`
-	ProcessRuntimeName string            `json:"process.runtime.name,omitempty"`
+	Cloud              *cloud     `json:"cloud"`
+	Faas               *faas      `json:"faas"`
+	AwsCommon          *awsCommon `json:"aws"`
+	HostArchitecture   string     `json:"host.arch,omitempty"`
+	ProcessRuntimeName string     `json:"process.runtime.name,omitempty"`
 }
 
 type Enricher struct {
@@ -136,10 +136,10 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 			LogGroupARN:  logGroupARN,
 			LogGroupTags: logGroupTags,
 			LogStream:    logStream,
+			ServiceTags:  sourceTags,
 		},
 		HostArchitecture:   hostArchitecture,
 		ProcessRuntimeName: processRuntimeName,
-		Tags:               sourceTags,
 	}
 }
 

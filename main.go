@@ -25,8 +25,8 @@ var (
 type edCommon enrich.Common
 
 type edLogsData struct {
-	SubscriptionFilters []string                        `json:"subscriptionFilters"`
-	MessageType         string                          `json:"messageType"`
+	SubscriptionFilters []string                        `json:"cloudwatch.subscription_filters"`
+	MessageType         string                          `json:"cloudwatch.message_type"`
 	LogEvents           []events.CloudwatchLogsLogEvent `json:"logEvents"`
 }
 
