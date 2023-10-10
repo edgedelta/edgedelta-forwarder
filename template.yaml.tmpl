@@ -18,13 +18,17 @@ Parameters:
     Type: String
     Description: Edge Delta hosted agent endpoint
     Default: ''
-  EDForwardLambdaTags:
+  EDForwardSourceTags:
     Type: String
-    Description: If set to true, lambda tags are fetched by building the lambda function ARN from the log group name. Requires "tag.GetResources" permission. This only works if log group name is in the format "/aws/lambda/<lambda_name>"
+    Description: If set to true, source log group's tags are fetched. Forwarder tries to build ARN of the source by using log group's name. Requires "tag:GetResources" permission. This only works if the log group name is in the correct format (i.e. /aws/lambda/<lambda_name>).
     Default: 'false'
   EDForwardForwarderTags:
     Type: String
     Description: If set to true, forwarder lambda's own tags are fetched. Requires "tag.GetResources" permission
+    Default: 'false'
+  EDForwardLogGroupTags:
+    Type: String
+    Description: If set to true, log group tags are fetched. Requires "tag:GetResources" permission.
     Default: 'false'
   EDPushTimeoutSec:
     Type: Number
@@ -55,8 +59,9 @@ Resources:
       Environment:
         Variables:
           ED_ENDPOINT: !Ref EDEndpoint
-          ED_FORWARD_LAMBDA_TAGS: !Ref EDForwardLambdaTags
+          ED_FORWARD_SOURCE_TAGS: !Ref EDForwardSourceTags
           ED_FORWARD_FORWARDER_TAGS: !Ref EDForwardForwarderTags
+          ED_FORWARD_LOG_GROUP_TAGS: !Ref EDForwardLogGroupTags
           ED_PUSH_TIMEOUT_SEC: !Ref EDPushTimeoutSec
           ED_RETRY_INTERVAL_MS: !Ref EDRetryIntervalMs
       Policies:
@@ -66,6 +71,12 @@ Resources:
           Effect: Allow
           Action:
           - tag:GetResources
+          Resource: '*'
+      - Statement:
+        - Sid: GetFunctionAccessPolicy
+          Effect: Allow
+          Action:
+          - lambda:GetFunction
           Resource: '*'
 
   LambdaInvokePermission:
