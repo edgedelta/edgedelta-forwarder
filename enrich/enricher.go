@@ -31,8 +31,10 @@ type cloud struct {
 }
 
 type awsCommon struct {
-	LogGroup  string `json:"log.group.name"`
-	LogStream string `json:"log.stream.name"`
+	LogGroup     string            `json:"log.group.name"`
+	LogGroupARN  string            `json:"log.group.arn"`
+	LogGroupTags map[string]string `json:"log.group.tags,omitempty"`
+	LogStream    string            `json:"log.stream.name"`
 }
 
 type Common struct {
@@ -118,7 +120,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 		}
 	}
 
-	tags, faasTags := e.getAllTags(ctx, forwarderARN, logGroupARN, arnsToGetTags, isSourceLambda)
+	sourceTags, faasTags, logGroupTags := e.getAllTags(ctx, forwarderARN, logGroupARN, arnsToGetTags, isSourceLambda)
 
 	return &Common{
 		Cloud: &cloud{ResourceID: getResourceID(arnsToGetTags, forwarderARN, logGroupARN), AccountID: accountID, Region: e.region},
@@ -130,45 +132,45 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 			Tags:       faasTags,
 		},
 		AwsCommon: &awsCommon{
-			LogGroup:  logGroup,
-			LogStream: logStream,
+			LogGroup:     logGroup,
+			LogGroupARN:  logGroupARN,
+			LogGroupTags: logGroupTags,
+			LogStream:    logStream,
 		},
 		HostArchitecture:   hostArchitecture,
 		ProcessRuntimeName: processRuntimeName,
-		Tags:               tags,
+		Tags:               sourceTags,
 	}
 }
 
-func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN string, allARNs []string, isSourceLambda bool) (map[string]string, map[string]string) {
+func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN string, allARNs []string, isSourceLambda bool) (sourceTags, faasTags, logGroupTags map[string]string) {
 	e.prepareResourceTags(ctx, allARNs)
-	tags := map[string]string{}
 	if m, ok := resourceARNToTagsCache[logGroupARN]; ok {
-		for k, v := range m {
-			tags[k] = v
-		}
+		logGroupTags = m
 	}
-	faasTags := map[string]string{}
 	if m, ok := resourceARNToTagsCache[forwarderARN]; ok {
-		for k, v := range m {
-			faasTags[k] = v
-		}
+		faasTags = m
 	}
 
-	sourceTags := tags
+	tags := sourceTags
 	if isSourceLambda {
-		sourceTags = faasTags
+		tags = faasTags
 	}
 	for _, arn := range allARNs {
 		if arn == forwarderARN || arn == logGroupARN {
 			continue
 		}
 		if m, ok := resourceARNToTagsCache[arn]; ok {
+			if len(tags) == 0 {
+				tags = m
+				continue
+			}
 			for k, v := range m {
-				sourceTags[k] = v
+				tags[k] = v
 			}
 		}
 	}
-	return tags, faasTags
+	return
 }
 
 func (e *Enricher) prepareResourceTags(ctx context.Context, arns []string) {
@@ -185,6 +187,12 @@ func (e *Enricher) prepareResourceTags(ctx context.Context, arns []string) {
 	if len(tagsMap) == 0 {
 		log.Printf("Failed to find tags for ARNs: %v", arns)
 		return
+	}
+
+	for _, arn := range arns {
+		if m, ok := tagsMap[arn]; ok {
+			resourceARNToTagsCache[arn] = m
+		}
 	}
 
 	// Empty map with key as all ARNs is added to cache to avoid repeated calls to resource service

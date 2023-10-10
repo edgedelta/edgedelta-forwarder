@@ -84,7 +84,7 @@ func TestGetLambdaTags(t *testing.T) {
 			defer delete(resourceARNToTagsCache, functionARN)
 
 			enricher := NewEnricher(tc.config, tc.resourceClient, lambda.NewNoOpClient())
-			_, faasTags := enricher.getAllTags(context.TODO(), forwarderARN, logGroupARN, []string{functionARN}, true)
+			_, faasTags, _ := enricher.getAllTags(context.TODO(), forwarderARN, logGroupARN, []string{functionARN}, true)
 			if diff := cmp.Diff(tc.wantFaasTags, faasTags); diff != "" {
 				t.Errorf("Tags mismatch (-want +got):\n%s", diff)
 			}

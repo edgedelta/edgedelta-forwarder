@@ -80,10 +80,14 @@ Forwarder lambda function sends logs in the following format:
     },
     "aws": {
         "log.group.name": "<Cloudwatch_log_group_name>",
+        "log.group.arn": "<Cloudwatch_log_group_arn>",
+        "log.group.tags": {
+            <Populated with the tags of the log group if ED_FORWARD_LOG_GROUP_TAGS is set to true>
+        },
         "log.stream.name": "<Cloudwatch_log_stream_name>",
     },
     "tags": {
-        <Populated with the tags of the source if ED_FORWARD_SOURCE_TAGS is set to true and log group if ED_FORWARD_LOG_GROUP_TAGS is set to true>
+        <Populated with the tags of the source if ED_FORWARD_SOURCE_TAGS is set to true and source is not lambda>
     },
     "subscriptionFilters":[
         <subscription_filter_name>"
