@@ -35,7 +35,7 @@ type awsLogs struct {
 	LogGroupARN            string            `json:"log.group.arn"`
 	LogGroupTags           map[string]string `json:"log.group.tags,omitempty"`
 	LogStream              string            `json:"log.stream.name"`
-	LogMessageType         string            `json:"log.message.type"`
+	LogMessageType         string            `json:"log.message_type"`
 	LogSubscriptionFilters []string          `json:"log.subscription_filters"`
 }
 
