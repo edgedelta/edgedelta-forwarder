@@ -152,24 +152,30 @@ func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN str
 		faasTags = m
 	}
 
-	tags := sourceTags
+	var tags map[string]string
 	if isSourceLambda {
+		if faasTags == nil {
+			faasTags = make(map[string]string)
+		}
 		tags = faasTags
+	} else {
+		if sourceTags == nil {
+			sourceTags = make(map[string]string)
+		}
+		tags = sourceTags
 	}
+
 	for _, arn := range allARNs {
 		if arn == forwarderARN || arn == logGroupARN {
 			continue
 		}
 		if m, ok := resourceARNToTagsCache[arn]; ok {
-			if len(tags) == 0 {
-				tags = m
-				continue
-			}
 			for k, v := range m {
 				tags[k] = v
 			}
 		}
 	}
+
 	return
 }
 
