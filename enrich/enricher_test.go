@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
 	"github.com/google/go-cmp/cmp"
 )
@@ -21,17 +22,19 @@ func (m *mockResourceClient) GetResourceTags(ctx context.Context, resourceARNs .
 
 func TestGetLambdaTags(t *testing.T) {
 	functionARN := "function:1"
+	forwarderARN := "function:2"
+	logGroupARN := "logGroup:1"
 
 	tests := []struct {
 		desc           string
 		config         *cfg.Config
 		resourceClient resource.Client
-		wantTags       map[string]string
+		wantFaasTags   map[string]string
 	}{
 		{
 			desc: "got tags from resources",
 			config: &cfg.Config{
-				ForwardLambdaTags:    true,
+				ForwardSourceTags:    true,
 				ForwardForwarderTags: true,
 				Region:               "us-west-2",
 			},
@@ -42,14 +45,14 @@ func TestGetLambdaTags(t *testing.T) {
 					},
 				},
 			},
-			wantTags: map[string]string{
+			wantFaasTags: map[string]string{
 				"tag1": "val1",
 			},
 		},
 		{
 			desc: "error while getting tags from resources",
 			config: &cfg.Config{
-				ForwardLambdaTags:    true,
+				ForwardSourceTags:    true,
 				ForwardForwarderTags: true,
 				Region:               "us-west-2",
 			},
@@ -57,12 +60,12 @@ func TestGetLambdaTags(t *testing.T) {
 				tags: nil,
 				err:  errors.New("no tags for this function"),
 			},
-			wantTags: map[string]string{},
+			wantFaasTags: map[string]string{},
 		},
 		{
 			desc: "got empty tags from resources",
 			config: &cfg.Config{
-				ForwardLambdaTags:    true,
+				ForwardSourceTags:    true,
 				ForwardForwarderTags: true,
 				Region:               "us-west-2",
 			},
@@ -70,7 +73,7 @@ func TestGetLambdaTags(t *testing.T) {
 				tags: map[string]map[string]string{},
 				err:  nil,
 			},
-			wantTags: map[string]string{},
+			wantFaasTags: map[string]string{},
 		},
 	}
 
@@ -80,9 +83,9 @@ func TestGetLambdaTags(t *testing.T) {
 			// Clear global cache
 			defer delete(resourceARNToTagsCache, functionARN)
 
-			enricher := NewEnricher(tc.config, tc.resourceClient)
-			gotTags := enricher.getLambdaTags(context.TODO(), functionARN)
-			if diff := cmp.Diff(tc.wantTags, gotTags); diff != "" {
+			enricher := NewEnricher(tc.config, tc.resourceClient, lambda.NewNoOpClient())
+			_, faasTags, _ := enricher.getAllTags(context.TODO(), forwarderARN, logGroupARN, []string{functionARN}, true)
+			if diff := cmp.Diff(tc.wantFaasTags, faasTags); diff != "" {
 				t.Errorf("Tags mismatch (-want +got):\n%s", diff)
 			}
 		})

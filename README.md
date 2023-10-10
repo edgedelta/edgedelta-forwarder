@@ -5,9 +5,10 @@ AWS lambda function to forward logs from AWS to Edge Delta agent.
 ## Environment Variables
 
 - ED_ENDPOINT: Edge Delta hosted agent endpoint. (Required)
-- ED_FORWARD_LAMBDA_TAGS: If set to true, lambda tags are fetched by building the lambda function ARN from the log group name. Requires "tag.GetResources" permission.
-    This only works if log group name is in the format "/aws/lambda/<lambda_name>".
-- ED_FORWARD_FORWARDER_TAGS: If set to true, forwarder lambda's own tags are fetched. Requires "tag.GetResources" permission.
+- ED_FORWARD_SOURCE_TAGS: If set to true, source log group's tags are fetched. Forwarder tries to build ARN of the source by using log group's name. Requires "tag:GetResources" permission. 
+    This only works if the log group name is in the correct format (i.e. /aws/lambda/<lambda_name>).
+- ED_FORWARD_FORWARDER_TAGS: If set to true, forwarder lambda's own tags are fetched. Requires "tag:GetResources" permission.
+- ED_FORWARD_LOG_GROUP_TAGS: If set to true, log group tags are fetched. Requires "tag:GetResources" permission.
 - ED_PUSH_TIMEOUT_SEC: Push timeout is the total duration of waiting for to send one batch of logs (in seconds). Default is 10.
 - ED_RETRY_INTERVAL_MS: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down. Default is 100.
 
@@ -26,6 +27,7 @@ zip "<zipped_forwarder_lambda_path>" bootstrap
 ```
 
 ### Step 3 - Create IAM Role for lambda
+If lambda role has "lambda:GetFunction" permission, forwarder will also get lambda runtime, architectures, memory size, and version from lambda function.
 
 ### Step 4 - Create Lambda function
 ```
@@ -64,18 +66,35 @@ Forwarder lambda function sends logs in the following format:
 {
     "cloud": {
         "resource_id": "<arn_of_the_forwarder_lambda>"
+        "account_id": "<account_id_of_the_log_group>",
+        "region": "<region_of_the_log_group>"
     },
     "faas":{
         "name":"<name_of_the_forwarder_lambda>",
-        "version":"<version_of_the_forwarder_lambda>"},
+        "version":"<version_of_the_forwarder_lambda>",
+        "request_id":"<request_id_of_the_forwarder_lambda>",
+        "memory_size":<memory_size_of_the_forwarder_lambda>,
+        "tags": {
+        <Populated with the tags of the lambda function if ED_FORWARD_FORWARDER_TAGS is set to true or ED_FORWARD_SOURCE_TAGS is true and source is lambda>
+        }
     },
-    "owner":"<account_id_of_the_log_group>",
-    "logGroup":"<Cloudwatch_log_group_name>",
-    "logStream":"<Cloudwatch_log_stream_name>",
-    "subscriptionFilters":[
-        <subscription_filter_name>"
-    ],
-    "messageType":"<message_type>",    // i.e. "DATA_MESSAGE"
+    "aws": {
+        "log.group.name": "<Cloudwatch_log_group_name>",
+        "log.group.arn": "<Cloudwatch_log_group_arn>",
+        "log.group.tags": {
+            <Populated with the tags of the log group if ED_FORWARD_LOG_GROUP_TAGS is set to true>
+        },
+        "log.group.message_type": "<message_type_of_the_log_group>",
+        "log.group.subscription_filters": [
+            "<subscription_filter_1>",
+            ...
+        ],
+        "log.stream.name": "<Cloudwatch_log_stream_name>",
+        "service.tags": {
+            <Populated with the tags of the log group if ED_FORWARD_SOURCE_TAGS is set to true>
+        },
+
+    },
     "logEvents":[
        {
             "id":"<log_id>",
