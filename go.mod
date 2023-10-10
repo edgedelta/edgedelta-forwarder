@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.41
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.16.0
 	github.com/cenkalti/backoff v2.2.1+incompatible
+	github.com/google/go-cmp v0.5.8
 )
 
 require github.com/jmespath/go-jmespath v0.4.0 // indirect

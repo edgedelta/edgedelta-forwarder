@@ -14,7 +14,7 @@ import (
 	"github.com/edgedelta/edgedelta-forwarder/utils"
 )
 
-var resourceTagsCache = make(map[string]map[string]string)
+var resourceARNToTagsCache = make(map[string]map[string]string)
 
 type faas struct {
 	Name       string            `json:"name"`
@@ -45,15 +45,15 @@ type Common struct {
 }
 
 type Enricher struct {
-	resourceCl           *resource.DefaultClient
-	lambdaCl             *lambda.DefaultClient
+	resourceCl           resource.Client
+	lambdaCl             lambda.Client
 	region               string
 	forwardForwarderTags bool
 	forwardSourceTags    bool
 	forwardLogGroupTags  bool
 }
 
-func NewEnricher(conf *cfg.Config, resourceCl *resource.DefaultClient, lambdaCl *lambda.DefaultClient) *Enricher {
+func NewEnricher(conf *cfg.Config, resourceCl resource.Client, lambdaCl lambda.Client) *Enricher {
 	return &Enricher{
 		forwardForwarderTags: conf.ForwardForwarderTags,
 		forwardSourceTags:    conf.ForwardSourceTags,
@@ -142,13 +142,13 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN string, allARNs []string, isSourceLambda bool) (map[string]string, map[string]string) {
 	e.prepareResourceTags(ctx, allARNs)
 	tags := map[string]string{}
-	if m, ok := resourceTagsCache[logGroupARN]; ok {
+	if m, ok := resourceARNToTagsCache[logGroupARN]; ok {
 		for k, v := range m {
 			tags[k] = v
 		}
 	}
 	faasTags := map[string]string{}
-	if m, ok := resourceTagsCache[forwarderARN]; ok {
+	if m, ok := resourceARNToTagsCache[forwarderARN]; ok {
 		for k, v := range m {
 			faasTags[k] = v
 		}
@@ -162,7 +162,7 @@ func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN str
 		if arn == forwarderARN || arn == logGroupARN {
 			continue
 		}
-		if m, ok := resourceTagsCache[arn]; ok {
+		if m, ok := resourceARNToTagsCache[arn]; ok {
 			for k, v := range m {
 				sourceTags[k] = v
 			}
@@ -173,7 +173,7 @@ func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN str
 
 func (e *Enricher) prepareResourceTags(ctx context.Context, arns []string) {
 	tagsCacheKey := getTagsCacheKey(arns...)
-	if _, ok := resourceTagsCache[tagsCacheKey]; ok {
+	if _, ok := resourceARNToTagsCache[tagsCacheKey]; ok {
 		return
 	}
 	log.Printf("Getting resource tags for ARNs: %v", arns)
@@ -187,12 +187,12 @@ func (e *Enricher) prepareResourceTags(ctx context.Context, arns []string) {
 		return
 	}
 
-	resourceTagsCache[tagsCacheKey] = map[string]string{}
+	resourceARNToTagsCache[tagsCacheKey] = map[string]string{}
 	for r, t := range tagsMap {
-		resourceTagsCache[r] = t
+		resourceARNToTagsCache[r] = t
 		log.Printf("Found tags: %v for ARN: %s", t, r)
 		for k, v := range t {
-			resourceTagsCache[tagsCacheKey][k] = v
+			resourceARNToTagsCache[tagsCacheKey][k] = v
 		}
 	}
 }
@@ -216,7 +216,7 @@ func getResourceID(arns []string, forwarderARN, logGroupARN string) string {
 	// If any tag exists for an ARN other than forwarder or log group, return that ARN as resource ID
 	for _, arn := range arns {
 		if arn != forwarderARN && arn != logGroupARN {
-			if m, ok := resourceTagsCache[arn]; ok {
+			if m, ok := resourceARNToTagsCache[arn]; ok {
 				if len(m) > 0 {
 					return arn
 				}

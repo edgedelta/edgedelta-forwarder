@@ -8,6 +8,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/lambda"
 )
 
+type Client interface {
+	GetFunctionConfiguration(functionARN string) (*lambda.FunctionConfiguration, error)
+}
+
 type DefaultClient struct {
 	svc *lambda.Lambda
 }
@@ -29,4 +33,14 @@ func (c *DefaultClient) GetFunctionConfiguration(functionARN string) (*lambda.Fu
 	}
 
 	return result, nil
+}
+
+type NoOpClient struct{}
+
+func NewNoOpClient() *NoOpClient {
+	return &NoOpClient{}
+}
+
+func (c *NoOpClient) GetFunctionConfiguration(functionARN string) (*lambda.FunctionConfiguration, error) {
+	return nil, nil
 }
