@@ -27,6 +27,7 @@ zip "<zipped_forwarder_lambda_path>" bootstrap
 ```
 
 ### Step 3 - Create IAM Role for lambda
+If lambda role has "lambda:GetFunction" permission, forwarder will also get lambda runtime, architectures, memory size, and version from lambda function.
 
 ### Step 4 - Create Lambda function
 ```

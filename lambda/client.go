@@ -9,7 +9,7 @@ import (
 )
 
 type Client interface {
-	GetFunctionConfiguration(functionARN string) (*lambda.FunctionConfiguration, error)
+	GetFunction(functionARN string) (*lambda.GetFunctionOutput, error)
 }
 
 type DefaultClient struct {
@@ -24,8 +24,8 @@ func NewClient(region string) (*DefaultClient, error) {
 	return &DefaultClient{svc: lambda.New(sess, &aws.Config{Region: aws.String(region)})}, nil
 }
 
-func (c *DefaultClient) GetFunctionConfiguration(functionARN string) (*lambda.FunctionConfiguration, error) {
-	result, err := c.svc.GetFunctionConfiguration(&lambda.GetFunctionConfigurationInput{
+func (c *DefaultClient) GetFunction(functionARN string) (*lambda.GetFunctionOutput, error) {
+	result, err := c.svc.GetFunction(&lambda.GetFunctionInput{
 		FunctionName: aws.String(functionARN),
 	})
 	if err != nil {
@@ -41,6 +41,6 @@ func NewNoOpClient() *NoOpClient {
 	return &NoOpClient{}
 }
 
-func (c *NoOpClient) GetFunctionConfiguration(functionARN string) (*lambda.FunctionConfiguration, error) {
+func (c *NoOpClient) GetFunction(functionARN string) (*lambda.GetFunctionOutput, error) {
 	return nil, nil
 }

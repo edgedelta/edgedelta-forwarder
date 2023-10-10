@@ -107,14 +107,14 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 	var hostArchitecture string
 	var processRuntimeName string
 	if functionARN != "" {
-		config, err := e.lambdaCl.GetFunctionConfiguration(functionARN)
+		function, err := e.lambdaCl.GetFunction(functionARN)
 		if err != nil {
 			log.Printf("Failed to get function configuration for ARN: %s, err: %v", functionARN, err)
 		} else {
-			functionVersion = *config.Version
-			processRuntimeName = *config.Runtime
-			hostArchitecture = getRuntimeArchitecture(functionARN, forwarderARN, config.Architectures)
-			memorySize = fmt.Sprintf("%d", *config.MemorySize)
+			functionVersion = *function.Configuration.Version
+			processRuntimeName = *function.Configuration.Runtime
+			hostArchitecture = getRuntimeArchitecture(functionARN, forwarderARN, function.Configuration.Architectures)
+			memorySize = fmt.Sprintf("%d", *function.Configuration.MemorySize)
 		}
 	}
 
