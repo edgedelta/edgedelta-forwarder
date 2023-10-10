@@ -80,7 +80,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, logGroup, logStream, account
 		arnsToGetTags = append(arnsToGetTags, forwarderARN)
 	}
 
-	logGroupARN := parser.BuildServiceARN("logs", accountID, e.region, fmt.Sprintf("log-group:%s:*", logGroup))
+	logGroupARN := parser.BuildServiceARN("logs", accountID, e.region, fmt.Sprintf("log-group:%s", logGroup))
 	if e.forwardLogGroupTags {
 		arnsToGetTags = append(arnsToGetTags, logGroupARN)
 	}
