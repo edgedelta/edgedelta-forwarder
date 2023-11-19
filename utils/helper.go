@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bytes"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -24,4 +25,25 @@ func GetRuntimeArchitecture() string {
 	default:
 		return X86Architecture
 	}
+}
+
+func SetMapKeyAndAppendIfExists(m map[string]string, k, v string) {
+	var sb strings.Builder
+	if val, ok := m[k]; ok {
+		sb.WriteString(v)
+		sb.WriteString(",")
+		sb.WriteString(val)
+		m[k] = sb.String()
+	}
+	m[k] = v
+}
+
+func SetMapKeyAndDuplicateWithPrefixIfExists(m map[string]string, prefix, k, v string) {
+	var sb strings.Builder
+	if _, ok := m[k]; ok {
+		sb.WriteString(prefix)
+		sb.WriteString(k)
+		m[k] = v
+	}
+	m[k] = v
 }

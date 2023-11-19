@@ -14,6 +14,10 @@ import (
 	"github.com/edgedelta/edgedelta-forwarder/utils"
 )
 
+const (
+	forwarderTagPrefix = "fw_"
+)
+
 var resourceARNToTagsCache = make(map[string]map[string]string)
 
 type faas struct {
@@ -158,31 +162,33 @@ func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN str
 	if m, ok := resourceARNToTagsCache[logGroupARN]; ok {
 		logGroupTags = m
 	}
-	if m, ok := resourceARNToTagsCache[forwarderARN]; ok {
-		faasTags = m
-	}
 
-	var tags map[string]string
-	if isSourceLambda {
-		if faasTags == nil {
-			faasTags = make(map[string]string)
-		}
-		tags = faasTags
-	} else {
-		if sourceTags == nil {
-			sourceTags = make(map[string]string)
-		}
-		tags = sourceTags
-	}
-
+	tags := make(map[string]string)
 	for _, arn := range allARNs {
 		if arn == forwarderARN || arn == logGroupARN {
 			continue
 		}
 		if m, ok := resourceARNToTagsCache[arn]; ok {
 			for k, v := range m {
-				tags[k] = v
+				utils.SetMapKeyAndAppendIfExists(m, k, v)
 			}
+		}
+	}
+
+	if isSourceLambda {
+		faasTags = tags
+	} else {
+		sourceTags = tags
+	}
+
+	if m, ok := resourceARNToTagsCache[logGroupARN]; ok {
+		if faasTags == nil {
+			faasTags = m
+			return
+		}
+
+		for k, v := range m {
+			utils.SetMapKeyAndDuplicateWithPrefixIfExists(m, forwarderTagPrefix, k, v)
 		}
 	}
 
