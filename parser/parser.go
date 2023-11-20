@@ -92,7 +92,7 @@ func buildECSARNs(trimmedGroup, logStream, accountID, region string) []string {
 
 	arns := make([]string, 0)
 	if len(streamParts) == 3 {
-		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("task-definition/%s/%s", groupParts[0], streamParts[2])))
+		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("task/%s/%s", groupParts[0], streamParts[2])))
 	}
 
 	if len(groupParts) == 1 {
