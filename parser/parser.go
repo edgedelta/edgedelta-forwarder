@@ -43,7 +43,7 @@ func buildSagemakerARN(trimmedGroup, logStream, accountID, region string) string
 	groupParts := strings.Split(trimmedGroup, "/")
 	streamParts := strings.Split(logStream, "/")
 	buildServiceArnFunc := func(suffix string) string {
-		return BuildServiceARN("sagemaker", accountID, region, suffix)
+		return BuildResourceARN("sagemaker", accountID, region, suffix)
 	}
 
 	if containsFunc("CompilationJobs") {
@@ -52,20 +52,23 @@ func buildSagemakerARN(trimmedGroup, logStream, accountID, region string) string
 	if containsFunc("Endpoints") && len(groupParts) == 2 {
 		return buildServiceArnFunc(fmt.Sprintf("endpoint/%s", groupParts[1]))
 	}
-	if containsFunc("InferenceRecommendationsJobs") && len(streamParts) == 2 {
-		return buildServiceArnFunc(fmt.Sprintf("inference-recommendations-job/%s", streamParts[0]))
-	}
 	if containsFunc("LabelingJobs") {
 		return buildServiceArnFunc(fmt.Sprintf("labeling-job/%s", streamParts[0]))
 	}
-	if containsFunc("NotebookInstances") && len(streamParts) == 2 {
-		return buildServiceArnFunc(fmt.Sprintf("notebook-instance/%s", streamParts[0]))
-	}
-	if containsFunc("ProcessingJobs") && len(streamParts) == 2 {
-		return buildServiceArnFunc(fmt.Sprintf("processing-job/%s", streamParts[0]))
-	}
-	if containsFunc("TrainingJobs") && len(streamParts) == 2 {
-		return buildServiceArnFunc(fmt.Sprintf("training-job/%s", streamParts[0]))
+
+	if len(streamParts) == 2 {
+		if containsFunc("InferenceRecommendationsJobs") {
+			return buildServiceArnFunc(fmt.Sprintf("inference-recommendations-job/%s", streamParts[0]))
+		}
+		if containsFunc("NotebookInstances") {
+			return buildServiceArnFunc(fmt.Sprintf("notebook-instance/%s", streamParts[0]))
+		}
+		if containsFunc("ProcessingJobs") {
+			return buildServiceArnFunc(fmt.Sprintf("processing-job/%s", streamParts[0]))
+		}
+		if containsFunc("TrainingJobs") {
+			return buildServiceArnFunc(fmt.Sprintf("training-job/%s", streamParts[0]))
+		}
 	}
 
 	// as fallback sagemaker/{resource_name} from log group
@@ -76,42 +79,45 @@ func buildEC2ARN(trimmedGroup, accountID, region string) string {
 	// expect vpc/{vpc_id} or instance/{instance_id}
 	parts := strings.Split(trimmedGroup, "/")
 	if len(parts) == 2 {
-		return BuildServiceARN("ec2", accountID, region, fmt.Sprintf("%s/%s", parts[0], parts[1]))
+		return BuildResourceARN("ec2", accountID, region, fmt.Sprintf("%s/%s", parts[0], parts[1]))
 	}
 
 	// as fallback assume logs are from an ec2 instance and use ec2/{instance_id}
-	return BuildServiceARN("ec2", accountID, region, fmt.Sprintf("instance/%s", trimmedGroup))
+	return BuildResourceARN("ec2", accountID, region, fmt.Sprintf("instance/%s", trimmedGroup))
 }
 
-func buildECSARNs(trimmedGroup, accountID, region string) []string {
-	parts := strings.Split(trimmedGroup, "/")
+func buildECSARNs(trimmedGroup, logStream, accountID, region string) []string {
+	groupParts := strings.Split(trimmedGroup, "/")
+	streamParts := strings.Split(logStream, "/")
 
-	if len(parts) == 1 {
-		return []string{BuildServiceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", parts[0]))}
+	arns := make([]string, 0)
+	if len(streamParts) == 3 {
+		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("task/%s/%s", groupParts[0], streamParts[2])))
 	}
 
-	if len(parts) == 2 {
-		return []string{
-			BuildServiceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", parts[0])),
-			BuildServiceARN("ecs", accountID, region, fmt.Sprintf("service/%s/%s", parts[0], parts[1])),
-		}
+	arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", groupParts[0])))
+	if len(groupParts) == 2 {
+		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("service/%s/%s", groupParts[0], groupParts[1])))
 	}
-	// as fallback ecs/{resource_name}
-	return []string{BuildServiceARN("ecs", accountID, region, trimmedGroup)}
+
+	// as fallback also add ecs/{resource_name}
+	arns = append(arns, BuildResourceARN("ecs", accountID, region, trimmedGroup))
+
+	return arns
 }
 
 func buildSNSARN(trimmedGroup, accountID, region string) string {
 	// {region}/{account_id}/{topic_name}
 	parts := strings.Split(trimmedGroup, "/")
 	if len(parts) == 3 {
-		return BuildServiceARN("sns", accountID, region, parts[2])
+		return BuildResourceARN("sns", accountID, region, parts[2])
 	}
 	// {region}/{account_id}/{topic_name}/Failure
 	if len(parts) == 4 {
-		return BuildServiceARN("sns", accountID, region, parts[2])
+		return BuildResourceARN("sns", accountID, region, parts[2])
 	}
 	// as fallback sns/{topic_name}
-	return BuildServiceARN("sns", accountID, region, trimmedGroup)
+	return BuildResourceARN("sns", accountID, region, trimmedGroup)
 }
 
 func findSourceFromLogGroup(logGroup string) (string, string, bool) {
@@ -156,12 +162,12 @@ func buildGenericARN(logGroup, accountID, region string) ([]string, bool) {
 
 	suffixes, ok := AvailableResourceSuffixesForServices[service]
 	if !ok {
-		return []string{BuildServiceARN(service, accountID, region, resourceName)}, true
+		return []string{BuildResourceARN(service, accountID, region, resourceName)}, true
 	}
 
 	var arns []string
 	for _, suffix := range suffixes {
-		arns = append(arns, BuildServiceARN(service, accountID, region, suffix+resourceName))
+		arns = append(arns, BuildResourceARN(service, accountID, region, suffix+resourceName))
 	}
 	return arns, true
 }
@@ -181,7 +187,7 @@ func GetSourceARNsFromLogGroup(accountID, region, logGroup, logStream string) ([
 		return []string{buildSNSARN(trimPrefixFunc("sns/"), accountID, region)}, true
 	}
 	if hasPrefixFunc("/ecs/") {
-		return buildECSARNs(trimPrefixFunc("/ecs/"), accountID, region), true
+		return buildECSARNs(trimPrefixFunc("/ecs/"), logStream, accountID, region), true
 	}
 	if hasPrefixFunc("/ec2/") {
 		return []string{buildEC2ARN(trimPrefixFunc("/ec2/"), accountID, region)}, true
@@ -190,13 +196,13 @@ func GetSourceARNsFromLogGroup(accountID, region, logGroup, logStream string) ([
 	return buildGenericARN(logGroup, accountID, region)
 }
 
-func BuildServiceARN(service, accountID, region, resource string) string {
+func BuildResourceARN(service, accountID, region, resource string) string {
 	return fmt.Sprintf("arn:aws:%s:%s:%s:%s", service, region, accountID, resource)
 }
 
 func GetFunctionARNAndNameIfSourceIsLambda(logGroup, accountID, region string) (string, string, bool) {
 	if service, resourceName, ok := findSourceFromLogGroup(logGroup); ok && service == "lambda" {
-		return BuildServiceARN(service, accountID, region, resourceName), resourceName, true
+		return BuildResourceARN(service, accountID, region, resourceName), resourceName, true
 	}
 	return "", "", false
 }
