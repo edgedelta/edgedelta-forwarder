@@ -95,16 +95,14 @@ func buildECSARNs(trimmedGroup, logStream, accountID, region string) []string {
 		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("task/%s/%s", groupParts[0], streamParts[2])))
 	}
 
-	if len(groupParts) == 1 {
-		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", groupParts[0])))
-	} else if len(groupParts) == 2 {
-		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", groupParts[0])))
+	arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", groupParts[0])))
+	if len(groupParts) == 2 {
 		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("service/%s/%s", groupParts[0], groupParts[1])))
 
-	} else {
-		// as fallback ecs/{resource_name}
-		arns = append(arns, BuildResourceARN("ecs", accountID, region, trimmedGroup))
 	}
+
+	// as fallback also add ecs/{resource_name}
+	arns = append(arns, BuildResourceARN("ecs", accountID, region, trimmedGroup))
 
 	return arns
 }
