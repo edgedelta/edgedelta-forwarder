@@ -11,6 +11,7 @@ AWS lambda function to forward logs from AWS to Edge Delta agent.
 - ED_FORWARD_LOG_GROUP_TAGS: If set to true, log group tags are fetched. Requires "tag:GetResources" permission.
 - ED_PUSH_TIMEOUT_SEC: Push timeout is the total duration of waiting for to send one batch of logs (in seconds). Default is 10.
 - ED_RETRY_INTERVAL_MS: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down. Default is 100.
+- ED_SOURCE_TAG_PREFIXES: Comma separated list of tag prefixes to be added to the source tags. For example, if ED_SOURCE_TAG_PREFIXES has "ed_forwarder=ed_fwd_", then all the forwarder tags will be prefixed with "ed_fwd_". Default is empty. Refer to mapping below for the list of tags keys.
 
 
 ## Manual Build
@@ -104,4 +105,22 @@ Forwarder lambda function sends logs in the following format:
         ...
     ]
 }
+```
+
+## Source Tags Prefix Mapping
+- Edge Delta Forwarder: ed_forwarder
+- Cloudwatch Log Group: log_group
+- Lambda: lambda
+- Sagemaker: sagemaker
+- ECS Task: ecs_task
+- ECS Cluster: ecs_cluster
+- ECS Service: ecs_service
+- EC2: ec2
+- SNS: sns
+... 
+The rest of the tag prefix keys are the same with the Amazon service name. For example, if the source is EKS, then the tag prefix key is eks. Thus, to prefix EKS tags ED_SOURCE_TAG_PREFIXES should have "eks=eks_prefix_".
+
+Example:
+```
+ED_SOURCE_TAG_PREFIXES=ed_forwarder=ed_fwd_,lambda=lambda_prefix_,sagemaker=sagemaker_prefix_
 ```

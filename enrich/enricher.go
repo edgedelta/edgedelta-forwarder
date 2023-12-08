@@ -228,9 +228,11 @@ func prepareSourcePrefixMap(prefixes string) map[tag.Source]string {
 	prefixMap := make(map[tag.Source]string)
 	parts := strings.Split(prefixes, ",")
 	for _, p := range parts {
-		parts := strings.Split(p, "=")
+		parts := strings.Split(strings.TrimSpace(p), "=")
 		if len(parts) == 2 {
-			prefixMap[tag.Source(parts[0])] = parts[1]
+			key := tag.Source(strings.TrimSpace(parts[0]))
+			value := strings.TrimSpace(parts[1])
+			prefixMap[key] = value
 		}
 	}
 
