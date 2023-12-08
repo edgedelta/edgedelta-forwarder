@@ -11,13 +11,14 @@ import (
 
 // Config for storing all parameters
 type Config struct {
-	Region               string
-	EDEndpoint           string
-	PushTimeout          time.Duration
-	RetryInterval        time.Duration
-	ForwardForwarderTags bool
-	ForwardSourceTags    bool
-	ForwardLogGroupTags  bool
+	Region                    string
+	EDEndpoint                string
+	PushTimeout               time.Duration
+	RetryInterval             time.Duration
+	ForwardForwarderTags      bool
+	ForwardSourceTags         bool
+	ForwardLogGroupTags       bool
+	SourceEnvironmentPrefixes string
 }
 
 func GetConfig() (*Config, error) {
@@ -63,6 +64,8 @@ func GetConfig() (*Config, error) {
 	} else {
 		config.RetryInterval = 100 * time.Millisecond
 	}
+
+	config.SourceEnvironmentPrefixes = os.Getenv("ED_SOURCE_TAG_PREFIXES")
 
 	config.ForwardForwarderTags = os.Getenv("ED_FORWARD_FORWARDER_TAGS") == "true"
 	config.ForwardSourceTags = os.Getenv("ED_FORWARD_SOURCE_TAGS") == "true"

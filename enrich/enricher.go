@@ -11,61 +11,18 @@ import (
 	"github.com/edgedelta/edgedelta-forwarder/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/parser"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
+	"github.com/edgedelta/edgedelta-forwarder/tag"
 	"github.com/edgedelta/edgedelta-forwarder/utils"
 )
 
 var resourceARNToTagsCache = make(map[string]map[string]string)
-
-type faas struct {
-	Name       string            `json:"name"`
-	Version    string            `json:"version"`
-	RequestID  string            `json:"request_id,omitempty"`
-	MemorySize string            `json:"memory_size,omitempty"`
-	Tags       map[string]string `json:"tags,omitempty"`
-}
-
-type cloud struct {
-	ResourceID string `json:"resource_id"`
-	AccountID  string `json:"account_id"`
-	Region     string `json:"region"`
-}
-
-type awsLogs struct {
-	LogGroup               string            `json:"log.group.name"`
-	LogGroupARN            string            `json:"log.group.arn"`
-	LogGroupTags           map[string]string `json:"log.group.tags,omitempty"`
-	LogStream              string            `json:"log.stream.name"`
-	LogMessageType         string            `json:"log.message_type"`
-	LogSubscriptionFilters []string          `json:"log.subscription_filters"`
-}
-
-type awsCommon struct {
-	awsLogs
-	ServiceTags map[string]string `json:"service.tags,omitempty"`
-}
-
-type Common struct {
-	Cloud              *cloud     `json:"cloud"`
-	Faas               *faas      `json:"faas"`
-	AwsCommon          *awsCommon `json:"aws"`
-	HostArchitecture   string     `json:"host.arch,omitempty"`
-	ProcessRuntimeName string     `json:"process.runtime.name,omitempty"`
-}
-
-type Enricher struct {
-	resourceCl           resource.Client
-	lambdaCl             lambda.Client
-	region               string
-	forwardForwarderTags bool
-	forwardSourceTags    bool
-	forwardLogGroupTags  bool
-}
 
 func NewEnricher(conf *cfg.Config, resourceCl resource.Client, lambdaCl lambda.Client) *Enricher {
 	return &Enricher{
 		forwardForwarderTags: conf.ForwardForwarderTags,
 		forwardSourceTags:    conf.ForwardSourceTags,
 		forwardLogGroupTags:  conf.ForwardLogGroupTags,
+		sourcePrefixMap:      prepareSourcePrefixMap(conf.SourceEnvironmentPrefixes),
 		region:               conf.Region,
 		resourceCl:           resourceCl,
 		lambdaCl:             lambdaCl,
@@ -91,9 +48,13 @@ func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string
 		arnsToGetTags = append(arnsToGetTags, logGroupARN)
 	}
 
+	arnToTagSourceMap := map[string]tag.Source{}
 	if e.forwardSourceTags {
-		if arns, ok := parser.GetSourceARNsFromLogGroup(accountID, e.region, logGroup, logStream); ok {
-			arnsToGetTags = append(arnsToGetTags, arns...)
+		if sources, ok := parser.GetSourceARNsFromLogGroup(accountID, e.region, logGroup, logStream); ok {
+			for _, s := range sources {
+				arnsToGetTags = append(arnsToGetTags, s.ARN)
+				arnToTagSourceMap[s.ARN] = s.Name
+			}
 		} else {
 			log.Printf("Failed to get source ARNs from log group: %s", logGroup)
 		}
@@ -126,7 +87,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string
 		}
 	}
 
-	sourceTags, faasTags, logGroupTags := e.getAllTags(ctx, forwarderARN, logGroupARN, arnsToGetTags, isSourceLambda)
+	sourceTags, faasTags, logGroupTags := e.getAllTags(ctx, forwarderARN, logGroupARN, arnsToGetTags, arnToTagSourceMap, isSourceLambda)
 
 	return &Common{
 		Cloud: &cloud{ResourceID: getResourceID(arnsToGetTags, forwarderARN, logGroupARN), AccountID: accountID, Region: e.region},
@@ -153,25 +114,34 @@ func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string
 	}
 }
 
-func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN string, allARNs []string, isSourceLambda bool) (sourceTags, faasTags, logGroupTags map[string]string) {
+// getAllTags retrieves all the tags for the specified ARNs and populates the tag maps.
+func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN string, allARNs []string, arnToService map[string]tag.Source, isSourceLambda bool) (sourceTags, faasTags, logGroupTags map[string]string) {
 	e.prepareResourceTags(ctx, allARNs)
-	if m, ok := resourceARNToTagsCache[logGroupARN]; ok {
-		logGroupTags = m
+
+	if prefix, ok := e.sourcePrefixMap[tag.SourceLogGroup]; !ok {
+		logGroupTags = resourceARNToTagsCache[logGroupARN]
+	} else if m, ok := resourceARNToTagsCache[logGroupARN]; ok {
+		logGroupTags = make(map[string]string, len(m))
+		for k, v := range m {
+			utils.SetKeyWithPrefix(logGroupTags, prefix, k, v)
+		}
 	}
-	if m, ok := resourceARNToTagsCache[forwarderARN]; ok {
-		faasTags = m
+
+	if prefix, ok := e.sourcePrefixMap[tag.SourceForwarder]; !ok {
+		faasTags = resourceARNToTagsCache[forwarderARN]
+	} else if m, ok := resourceARNToTagsCache[forwarderARN]; ok {
+		faasTags = make(map[string]string, len(m))
+		for k, v := range m {
+			utils.SetKeyWithPrefix(faasTags, prefix, k, v)
+		}
 	}
 
 	var tags map[string]string
 	if isSourceLambda {
-		if faasTags == nil {
-			faasTags = make(map[string]string)
-		}
+		faasTags = initializeMapIfEmpty(faasTags)
 		tags = faasTags
 	} else {
-		if sourceTags == nil {
-			sourceTags = make(map[string]string)
-		}
+		sourceTags = initializeMapIfEmpty(sourceTags)
 		tags = sourceTags
 	}
 
@@ -180,8 +150,9 @@ func (e *Enricher) getAllTags(ctx context.Context, forwarderARN, logGroupARN str
 			continue
 		}
 		if m, ok := resourceARNToTagsCache[arn]; ok {
+			prefix := e.sourcePrefixMap[arnToService[arn]]
 			for k, v := range m {
-				tags[k] = v
+				utils.SetKeyWithPrefix(tags, prefix, k, v)
 			}
 		}
 	}
@@ -231,15 +202,37 @@ func getRuntimeArchitecture(functionARN, forwarderARN string, archs []*string) s
 }
 
 func getResourceID(arns []string, forwarderARN, logGroupARN string) string {
-	// If any tag exists for an ARN other than forwarder or log group, return that ARN as resource ID
 	for _, arn := range arns {
 		if arn != forwarderARN && arn != logGroupARN {
-			if m, ok := resourceARNToTagsCache[arn]; ok {
-				if len(m) > 0 {
-					return arn
-				}
+			if m, ok := resourceARNToTagsCache[arn]; ok && len(m) > 0 {
+				return arn
 			}
 		}
 	}
+
 	return forwarderARN
+}
+
+func initializeMapIfEmpty(m map[string]string) map[string]string {
+	if m == nil {
+		return make(map[string]string)
+	}
+	return m
+
+}
+
+func prepareSourcePrefixMap(prefixes string) map[tag.Source]string {
+	if prefixes == "" {
+		return nil
+	}
+	prefixMap := make(map[tag.Source]string)
+	parts := strings.Split(prefixes, ",")
+	for _, p := range parts {
+		parts := strings.Split(p, "=")
+		if len(parts) == 2 {
+			prefixMap[tag.Source(parts[0])] = parts[1]
+		}
+	}
+
+	return prefixMap
 }

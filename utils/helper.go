@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bytes"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -24,4 +25,11 @@ func GetRuntimeArchitecture() string {
 	default:
 		return X86Architecture
 	}
+}
+
+func SetKeyWithPrefix(m map[string]string, prefix, k, v string) {
+	var sb strings.Builder
+	sb.WriteString(prefix)
+	sb.WriteString(k)
+	m[sb.String()] = v
 }
