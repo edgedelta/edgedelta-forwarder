@@ -3,6 +3,8 @@ package parser
 import (
 	"fmt"
 	"strings"
+
+	"github.com/edgedelta/edgedelta-forwarder/tag"
 )
 
 const (
@@ -36,7 +38,7 @@ var (
 	}
 )
 
-func buildSagemakerARN(trimmedGroup, logStream, accountID, region string) string {
+func buildSagemakerARN(trimmedGroup, logStream, accountID, region string) tag.ServiceInfo {
 	containsFunc := func(str string) bool {
 		return strings.Contains(trimmedGroup, str)
 	}
@@ -46,78 +48,93 @@ func buildSagemakerARN(trimmedGroup, logStream, accountID, region string) string
 		return BuildResourceARN("sagemaker", accountID, region, suffix)
 	}
 
-	if containsFunc("CompilationJobs") {
-		return buildServiceArnFunc(fmt.Sprintf("compilation-job/%s", logStream))
-	}
-	if containsFunc("Endpoints") && len(groupParts) == 2 {
-		return buildServiceArnFunc(fmt.Sprintf("endpoint/%s", groupParts[1]))
-	}
-	if containsFunc("LabelingJobs") {
-		return buildServiceArnFunc(fmt.Sprintf("labeling-job/%s", streamParts[0]))
+	service := tag.ServiceInfo{
+		Name: tag.SourceSagemaker,
 	}
 
-	if len(streamParts) == 2 {
+	if containsFunc("CompilationJobs") {
+		service.ARN = buildServiceArnFunc(fmt.Sprintf("compilation-job/%s", logStream))
+	} else if containsFunc("Endpoints") && len(groupParts) == 2 {
+		service.ARN = buildServiceArnFunc(fmt.Sprintf("endpoint/%s", groupParts[1]))
+	} else if containsFunc("LabelingJobs") {
+		service.ARN = buildServiceArnFunc(fmt.Sprintf("labeling-job/%s", streamParts[0]))
+	} else if len(streamParts) == 2 {
 		if containsFunc("InferenceRecommendationsJobs") {
-			return buildServiceArnFunc(fmt.Sprintf("inference-recommendations-job/%s", streamParts[0]))
-		}
-		if containsFunc("NotebookInstances") {
-			return buildServiceArnFunc(fmt.Sprintf("notebook-instance/%s", streamParts[0]))
-		}
-		if containsFunc("ProcessingJobs") {
-			return buildServiceArnFunc(fmt.Sprintf("processing-job/%s", streamParts[0]))
-		}
-		if containsFunc("TrainingJobs") {
-			return buildServiceArnFunc(fmt.Sprintf("training-job/%s", streamParts[0]))
+			service.ARN = buildServiceArnFunc(fmt.Sprintf("inference-recommendations-job/%s", streamParts[0]))
+		} else if containsFunc("NotebookInstances") {
+			service.ARN = buildServiceArnFunc(fmt.Sprintf("notebook-instance/%s", streamParts[0]))
+		} else if containsFunc("ProcessingJobs") {
+			service.ARN = buildServiceArnFunc(fmt.Sprintf("processing-job/%s", streamParts[0]))
+		} else if containsFunc("TrainingJobs") {
+			service.ARN = buildServiceArnFunc(fmt.Sprintf("training-job/%s", streamParts[0]))
 		}
 	}
 
 	// as fallback sagemaker/{resource_name} from log group
-	return buildServiceArnFunc(trimmedGroup)
+	if service.ARN == "" {
+		service.ARN = buildServiceArnFunc(trimmedGroup)
+	}
+
+	return service
 }
 
-func buildEC2ARN(trimmedGroup, accountID, region string) string {
+func buildEC2ARN(trimmedGroup, accountID, region string) tag.ServiceInfo {
 	// expect vpc/{vpc_id} or instance/{instance_id}
 	parts := strings.Split(trimmedGroup, "/")
 	if len(parts) == 2 {
-		return BuildResourceARN("ec2", accountID, region, fmt.Sprintf("%s/%s", parts[0], parts[1]))
+		return tag.ServiceInfo{
+			Name: tag.SourceEC2,
+			ARN:  BuildResourceARN("ec2", accountID, region, fmt.Sprintf("%s/%s", parts[0], parts[1])),
+		}
 	}
 
 	// as fallback assume logs are from an ec2 instance and use ec2/{instance_id}
-	return BuildResourceARN("ec2", accountID, region, fmt.Sprintf("instance/%s", trimmedGroup))
+	return tag.ServiceInfo{
+		Name: tag.SourceEC2,
+		ARN:  BuildResourceARN("ec2", accountID, region, fmt.Sprintf("instance/%s", trimmedGroup)),
+	}
 }
 
-func buildECSARNs(trimmedGroup, logStream, accountID, region string) []string {
+func buildECSARNs(trimmedGroup, logStream, accountID, region string) []tag.ServiceInfo {
 	groupParts := strings.Split(trimmedGroup, "/")
 	streamParts := strings.Split(logStream, "/")
 
-	arns := make([]string, 0)
+	services := make([]tag.ServiceInfo, 0)
 	if len(streamParts) == 3 {
-		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("task/%s/%s", groupParts[0], streamParts[2])))
+		services = append(services, tag.ServiceInfo{
+			Name: tag.SourceECSTask,
+			ARN:  BuildResourceARN("ecs", accountID, region, fmt.Sprintf("task/%s/%s", groupParts[0], streamParts[2])),
+		})
 	}
 
-	arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", groupParts[0])))
+	services = append(services, tag.ServiceInfo{
+		Name: tag.SourceECSCluster,
+		ARN:  BuildResourceARN("ecs", accountID, region, fmt.Sprintf("cluster/%s", groupParts[0])),
+	})
+
 	if len(groupParts) == 2 {
-		arns = append(arns, BuildResourceARN("ecs", accountID, region, fmt.Sprintf("service/%s/%s", groupParts[0], groupParts[1])))
+		services = append(services, tag.ServiceInfo{
+			Name: tag.SourceECSService,
+			ARN:  BuildResourceARN("ecs", accountID, region, fmt.Sprintf("service/%s/%s", groupParts[0], groupParts[1])),
+		})
 	}
 
-	// as fallback also add ecs/{resource_name}
-	arns = append(arns, BuildResourceARN("ecs", accountID, region, trimmedGroup))
-
-	return arns
+	return services
 }
 
-func buildSNSARN(trimmedGroup, accountID, region string) string {
-	// {region}/{account_id}/{topic_name}
+func buildSNSARN(trimmedGroup, accountID, region string) tag.ServiceInfo {
 	parts := strings.Split(trimmedGroup, "/")
-	if len(parts) == 3 {
-		return BuildResourceARN("sns", accountID, region, parts[2])
+	service := tag.ServiceInfo{
+		Name: tag.SourceSNS,
+		ARN:  BuildResourceARN("sns", accountID, region, trimmedGroup), // fallback if not parsed
 	}
-	// {region}/{account_id}/{topic_name}/Failure
-	if len(parts) == 4 {
-		return BuildResourceARN("sns", accountID, region, parts[2])
+
+	// {region}/{account_id}/{topic_name}/Failure or {region}/{account_id}/{topic_name}
+	if len(parts) == 3 || len(parts) == 4 {
+		service.ARN = BuildResourceARN("sns", accountID, region, parts[2])
 	}
-	// as fallback sns/{topic_name}
-	return BuildResourceARN("sns", accountID, region, trimmedGroup)
+
+	return service
 }
 
 func findSourceFromLogGroup(logGroup string) (string, string, bool) {
@@ -149,7 +166,7 @@ func findSourceFromLogGroup(logGroup string) (string, string, bool) {
 	return "", "", false
 }
 
-func buildGenericARN(logGroup, accountID, region string) ([]string, bool) {
+func buildGenericARN(logGroup, accountID, region string) ([]tag.ServiceInfo, bool) {
 	service, resourceName, ok := findSourceFromLogGroup(logGroup)
 	if !ok {
 		return nil, false
@@ -162,17 +179,26 @@ func buildGenericARN(logGroup, accountID, region string) ([]string, bool) {
 
 	suffixes, ok := AvailableResourceSuffixesForServices[service]
 	if !ok {
-		return []string{BuildResourceARN(service, accountID, region, resourceName)}, true
+		return []tag.ServiceInfo{
+			{
+				Name: tag.Source(service),
+				ARN:  BuildResourceARN(service, accountID, region, resourceName),
+			},
+		}, true
 	}
 
-	var arns []string
+	var services []tag.ServiceInfo
 	for _, suffix := range suffixes {
-		arns = append(arns, BuildResourceARN(service, accountID, region, suffix+resourceName))
+		services = append(services, tag.ServiceInfo{
+			Name: tag.Source(service),
+			ARN:  BuildResourceARN(service, accountID, region, suffix+resourceName),
+		})
 	}
-	return arns, true
+
+	return services, true
 }
 
-func GetSourceARNsFromLogGroup(accountID, region, logGroup, logStream string) ([]string, bool) {
+func GetSourceARNsFromLogGroup(accountID, region, logGroup, logStream string) ([]tag.ServiceInfo, bool) {
 	trimPrefixFunc := func(prefix string) string {
 		return strings.TrimPrefix(logGroup, prefix)
 	}
@@ -181,16 +207,16 @@ func GetSourceARNsFromLogGroup(accountID, region, logGroup, logStream string) ([
 	}
 
 	if hasPrefixFunc("/aws/sagemaker/") {
-		return []string{buildSagemakerARN(trimPrefixFunc("/aws/sagemaker/"), logStream, accountID, region)}, true
+		return []tag.ServiceInfo{buildSagemakerARN(trimPrefixFunc("/aws/sagemaker/"), logStream, accountID, region)}, true
 	}
 	if hasPrefixFunc("sns/") {
-		return []string{buildSNSARN(trimPrefixFunc("sns/"), accountID, region)}, true
+		return []tag.ServiceInfo{buildSNSARN(trimPrefixFunc("sns/"), accountID, region)}, true
 	}
 	if hasPrefixFunc("/ecs/") {
 		return buildECSARNs(trimPrefixFunc("/ecs/"), logStream, accountID, region), true
 	}
 	if hasPrefixFunc("/ec2/") {
-		return []string{buildEC2ARN(trimPrefixFunc("/ec2/"), accountID, region)}, true
+		return []tag.ServiceInfo{buildEC2ARN(trimPrefixFunc("/ec2/"), accountID, region)}, true
 	}
 
 	return buildGenericARN(logGroup, accountID, region)

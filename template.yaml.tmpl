@@ -38,6 +38,10 @@ Parameters:
     Type: Number
     Description: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down
     Default: 100
+  EDSourceTagPrefixes:
+    Type: String
+    Description: Comma separated list of tag prefixes to prefix corresponding service tags. For example, `ed_forwarder=ed_fwd_,log_group=lg_` will prefix forwarder tags with `ed_fwd_` and log group tags with `lg_`.
+    Default: ''
 Outputs:
   EdgeDeltaForwarderArn:
     Description: EdgeDeltaForwarder Function ARN
@@ -64,6 +68,7 @@ Resources:
           ED_FORWARD_LOG_GROUP_TAGS: !Ref EDForwardLogGroupTags
           ED_PUSH_TIMEOUT_SEC: !Ref EDPushTimeoutSec
           ED_RETRY_INTERVAL_MS: !Ref EDRetryIntervalMs
+          ED_SOURCE_TAG_PREFIXES: !Ref EDSourceTagPrefixes
       Policies:
       - AWSLambdaBasicExecutionRole
       - Statement:
