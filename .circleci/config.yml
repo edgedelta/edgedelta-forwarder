@@ -3,7 +3,7 @@ version: 2.1
 executors:
   edimg-build:
     docker:
-      - image: 233765244907.dkr.ecr.us-west-2.amazonaws.com/build:latest
+      - image: 233765244907.dkr.ecr.us-east-1.amazonaws.com/build:latest
   cimg-base:
     docker:
       - image: cimg/base:stable
