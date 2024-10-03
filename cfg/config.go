@@ -12,6 +12,7 @@ import (
 const (
 	defaultPushTimeout = 10 * time.Second
 	MaxChunkSize       = 1000 * 1000 // 1MB
+	MinChunkSize       = 50 * 1000   // 50KB
 )
 
 // Config for storing all parameters
@@ -70,6 +71,9 @@ func GetConfig() (*Config, error) {
 			}
 			if batchSize > MaxChunkSize {
 				errs = append(errs, fmt.Errorf("batch size must be less than or equal to %d", MaxChunkSize))
+			}
+			if batchSize < MinChunkSize {
+				errs = append(errs, fmt.Errorf("batch size must be greater than or equal to %d", MinChunkSize))
 			}
 			config.BatchSize = batchSize
 		}

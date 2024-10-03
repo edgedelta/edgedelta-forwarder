@@ -27,6 +27,8 @@ func NewChunker(chunkSize int, logEntry *core.Log) (*Chunker, error) {
 		return nil, fmt.Errorf("failed to marshal common object: %w", err)
 	}
 
+	// Should never hit this case due to min chunk size check in config
+	// but added for safety
 	if len(commonJson) > cfg.MaxChunkSize {
 		return nil, fmt.Errorf("common object is too large for specified chunk size. Try increasing the chunk size, given chunk size: %d, detected object size: %d", cfg.MaxChunkSize, len(commonJson))
 	}
