@@ -3,7 +3,7 @@ module github.com/edgedelta/edgedelta-forwarder
 go 1.19
 
 require (
-	github.com/aws/aws-lambda-go v1.41.0
+	github.com/aws/aws-lambda-go v1.47.0
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.41
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.16.0
