@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultPushTimeout = 10 * time.Second
-	defaultBatchSize   = 1024 * 1024 // 1MiB
+	MaxChunkSize       = 1000 * 1000 // 1MB
 )
 
 // Config for storing all parameters
@@ -65,10 +65,16 @@ func GetConfig() (*Config, error) {
 		if err != nil {
 			errs = append(errs, err)
 		} else {
+			if batchSize <= 0 {
+				errs = append(errs, errors.New("batch size must be greater than 0"))
+			}
+			if batchSize > MaxChunkSize {
+				errs = append(errs, fmt.Errorf("batch size must be less than or equal to %d", MaxChunkSize))
+			}
 			config.BatchSize = batchSize
 		}
 	} else {
-		config.BatchSize = defaultBatchSize
+		config.BatchSize = MaxChunkSize
 	}
 
 	ri := os.Getenv("ED_RETRY_INTERVAL_MS")

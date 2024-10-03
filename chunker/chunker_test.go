@@ -2,116 +2,150 @@ package chunker
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/edgedelta/edgedelta-forwarder/edlog"
+	"github.com/edgedelta/edgedelta-forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/core"
 )
 
 func TestChunkLogs(t *testing.T) {
-	chunker := NewChunker(125) // Small size for testing
-
 	tests := []struct {
-		name           string
-		input          *edlog.Log
-		expectedChunks int
-		expectOverflow bool
+		name               string
+		chunkSize          int
+		common             core.Common
+		logEvents          []events.CloudwatchLogsLogEvent
+		expectedChunks     int
+		chunksShouldExceed []bool
 	}{
 		{
-			name: "Single small log",
-			input: &edlog.Log{
-				Common: edlog.Common{
-					HostArchitecture: "test arch 1",
-				},
-				Data: edlog.Data{
-					LogEvents: []events.CloudwatchLogsLogEvent{
-						{Message: "Short log"},
-					},
-				},
-			},
-			expectedChunks: 1,
-			expectOverflow: false,
+			name:               "Empty log",
+			chunkSize:          1024,
+			common:             core.Common{},
+			logEvents:          []events.CloudwatchLogsLogEvent{},
+			expectedChunks:     1,
+			chunksShouldExceed: []bool{false},
 		},
 		{
-			name: "Multiple logs requiring chunks",
-			input: &edlog.Log{
-				Common: edlog.Common{
-					HostArchitecture: "test arch 2",
-				},
-				Data: edlog.Data{
-					LogEvents: []events.CloudwatchLogsLogEvent{
-						{Message: "Log 1"},
-						{Message: "Log 2"},
-						{Message: "Log 3"},
-					},
-				},
+			name:      "Single small log event",
+			chunkSize: 1024,
+			common: core.Common{ // common object size is 63 bytes
+				HostArchitecture: "test arch 1",
 			},
-			expectedChunks: 3,
-			expectOverflow: false,
+			logEvents:          []events.CloudwatchLogsLogEvent{{Message: "Small log"}},
+			expectedChunks:     1,
+			chunksShouldExceed: []bool{false},
 		},
 		{
-			name: "Log exceeding chunk size",
-			input: &edlog.Log{
-				Common: edlog.Common{
-					HostArchitecture: "test arch 3",
-				},
-				Data: edlog.Data{
-					LogEvents: []events.CloudwatchLogsLogEvent{
-						{Message: "This is a very long log that exceeds the chunk size limit"},
-					},
-				},
+			name:      "Multiple log events within chunk size",
+			chunkSize: 1024,
+			common: core.Common{ // common object size is 100 bytes
+				HostArchitecture:   "test arch 2",
+				ProcessRuntimeName: "test source",
 			},
-			expectedChunks: 1,
-			expectOverflow: true,
+			logEvents: []events.CloudwatchLogsLogEvent{
+				{Message: "Log 1"},
+				{Message: "Log 2"},
+				{Message: "Log 3"},
+			},
+			expectedChunks:     1,
+			chunksShouldExceed: []bool{false},
 		},
 		{
-			name: "Multiple logs exceeding chunk size",
-			input: &edlog.Log{
-				Common: edlog.Common{
-					HostArchitecture: "test arch 4",
-				},
-				Data: edlog.Data{
-					LogEvents: []events.CloudwatchLogsLogEvent{
-						{Message: "Log 1"},
-						{Message: "Log 2"},
-						{Message: "Log 3"},
-						{Message: "This is a very long log that exceeds the chunk size limit"},
-					},
-				},
+			name:      "Log events exceeding chunk size",
+			chunkSize: 128,
+			common: core.Common{ // common object size is 105 bytes
+				HostArchitecture:   "test arch 3",
+				ProcessRuntimeName: "test-container-1",
 			},
-			expectedChunks: 2,
-			expectOverflow: true,
+			logEvents: []events.CloudwatchLogsLogEvent{
+				{Message: "This is a long log message that will exceed the chunk size"},
+				{Message: "Another long log message to ensure multiple chunks"},
+			},
+			expectedChunks:     2,
+			chunksShouldExceed: []bool{true, true}, // Both chunks should exceed the chunk size
+		},
+		{
+			name:      "Many small log events",
+			chunkSize: 256,
+			common: core.Common{ // common object size is 99 bytes
+				HostArchitecture:   "test arch 4",
+				ProcessRuntimeName: "test-pod-1",
+			},
+			logEvents:          generateLogEvents(100, 10), // 100 events of 10 bytes each
+			expectedChunks:     100,
+			chunksShouldExceed: make([]bool, 100),
+		},
+		{
+			name:      "Single large log event exceeding max chunk size",
+			chunkSize: cfg.MaxChunkSize,
+			common: core.Common{ // common object size is 103 bytes
+				HostArchitecture:   "test arch 5",
+				ProcessRuntimeName: "test-namespace",
+			},
+			logEvents:          []events.CloudwatchLogsLogEvent{{Message: string(make([]byte, cfg.MaxChunkSize))}},
+			expectedChunks:     1,
+			chunksShouldExceed: []bool{true},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			chunks, err := chunker.ChunkLogs(tt.input)
+			log := &core.Log{
+				Common: tt.common,
+				Data:   core.Data{LogEvents: tt.logEvents},
+			}
+			chunker, err := NewChunker(tt.chunkSize, log)
+			if err != nil {
+				t.Fatalf("Failed to create chunk, err: %v", err)
+			}
+
+			chunks, err := chunker.ChunkLogs()
 			if err != nil {
 				t.Errorf("Failed to chunk logs: %v", err)
 			}
 
 			if len(chunks) != tt.expectedChunks {
-				t.Errorf("Expected %d chunks, got %d", tt.expectedChunks, len(chunks))
+				t.Errorf("Expected %d chunks, but got %d", tt.expectedChunks, len(chunks))
 			}
 
-			// Validate each chunk
+			// Verify each chunk
+			totalEvents := 0
 			for i, chunk := range chunks {
-				var log edlog.Log
-				err := json.Unmarshal(chunk, &log)
-				if err != nil {
+				var decodedLog core.Log
+				if err := json.Unmarshal(chunk, &decodedLog); err != nil {
 					t.Errorf("Failed to unmarshal chunk %d: %v", i, err)
+					continue
 				}
-				if log.Common != tt.input.Common {
-					t.Errorf("Chunk %d: Common data mismatch", i)
+				if !reflect.DeepEqual(tt.common, decodedLog.Common) {
+					t.Errorf("Common data mismatch in chunk %d", i)
+				}
+				gotSize := len(chunk)
+
+				// Verify log events
+				if tt.chunksShouldExceed[i] && gotSize <= tt.chunkSize {
+					t.Errorf("Chunk %d size should exceed chunk size, max chunk size: %d, got %d bytes", i, tt.chunkSize, gotSize)
+				} else if !tt.chunksShouldExceed[i] && gotSize > tt.chunkSize {
+					t.Errorf("Chunk %d size should not exceed chunk size, max chunk size: %d, got %d bytes", i, tt.chunkSize, gotSize)
 				}
 
-				t.Logf("Chunk %d size: %d bytes", i, len(chunk))
+				totalEvents += len(decodedLog.Data.LogEvents)
+			}
 
-				if !tt.expectOverflow && len(chunk) > chunker.maxChunkSize {
-					t.Errorf("Chunk %d exceeds max size: %d > %d", i, len(chunk), chunker.maxChunkSize)
-				}
+			// Verify total number of log events
+			if totalEvents != len(tt.logEvents) {
+				t.Errorf("Total number of log events mismatch: expected %d, got %d", len(tt.logEvents), totalEvents)
 			}
 		})
 	}
+}
+
+// Helper function to generate multiple log events
+func generateLogEvents(count, size int) []events.CloudwatchLogsLogEvent {
+	logEvents := make([]events.CloudwatchLogsLogEvent, count)
+	for i := 0; i < count; i++ {
+		logEvents[i] = events.CloudwatchLogsLogEvent{Message: string(make([]byte, size))}
+	}
+	return logEvents
 }

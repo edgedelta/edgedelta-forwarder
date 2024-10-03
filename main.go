@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
 	"github.com/edgedelta/edgedelta-forwarder/chunker"
-	"github.com/edgedelta/edgedelta-forwarder/edlog"
+	"github.com/edgedelta/edgedelta-forwarder/core"
 	"github.com/edgedelta/edgedelta-forwarder/enrich"
 	"github.com/edgedelta/edgedelta-forwarder/push"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
@@ -59,8 +59,6 @@ func init() {
 	}
 	enricher = enrich.NewEnricher(config, resCl, lambdaClient)
 
-	logChunker = chunker.NewChunker(config.BatchSize)
-
 	pusher = push.NewPusher(config)
 }
 
@@ -78,14 +76,16 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 	}
 	common := enricher.GetEDCommon(ctx, data.SubscriptionFilters, data.MessageType, data.LogGroup, data.LogStream, data.Owner)
 
-	edLog := &edlog.Log{
-		Common: edlog.Common(*common),
-		Data: edlog.Data{
+	edLog := &core.Log{
+		Common: core.Common(*common),
+		Data: core.Data{
 			LogEvents: data.LogEvents,
 		},
 	}
 
-	chunks, err := logChunker.ChunkLogs(edLog)
+	logChunker, err := chunker.NewChunker(config.BatchSize, edLog)
+
+	chunks, err := logChunker.ChunkLogs()
 	if err != nil {
 		log.Printf("Failed to chunk logs, err: %v", err)
 		return err

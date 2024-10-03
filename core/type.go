@@ -1,4 +1,4 @@
-package edlog
+package core
 
 import (
 	"github.com/aws/aws-lambda-go/events"
