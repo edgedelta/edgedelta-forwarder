@@ -18,6 +18,7 @@ func TestChunkLogs(t *testing.T) {
 		logEvents          []events.CloudwatchLogsLogEvent
 		expectedChunks     int
 		chunksShouldExceed []bool
+		exceptsError       bool
 	}{
 		{
 			name:               "Empty log",
@@ -26,6 +27,15 @@ func TestChunkLogs(t *testing.T) {
 			logEvents:          []events.CloudwatchLogsLogEvent{},
 			expectedChunks:     1,
 			chunksShouldExceed: []bool{false},
+		},
+		{
+			name:      "empty log but common data exceeds chunk size",
+			chunkSize: 50,
+			common: core.Common{ // common object size is 63 bytes
+				HostArchitecture: "test arch 1",
+			},
+			logEvents:    []events.CloudwatchLogsLogEvent{},
+			exceptsError: true,
 		},
 		{
 			name:      "Single small log event",
@@ -91,6 +101,7 @@ func TestChunkLogs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			log := &core.Log{
 				Common: tt.common,
@@ -98,7 +109,10 @@ func TestChunkLogs(t *testing.T) {
 			}
 			chunker, err := NewChunker(tt.chunkSize, log)
 			if err != nil {
-				t.Fatalf("Failed to create chunk, err: %v", err)
+				if !tt.exceptsError {
+					t.Errorf("Failed to create chunker: %v", err)
+				}
+				return
 			}
 
 			chunks, err := chunker.ChunkLogs()

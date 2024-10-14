@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/edgedelta/edgedelta-forwarder/cfg"
 	"github.com/edgedelta/edgedelta-forwarder/core"
 )
 
@@ -29,8 +28,8 @@ func NewChunker(chunkSize int, logEntry *core.Log) (*Chunker, error) {
 
 	// Should never hit this case due to min chunk size check in config
 	// but added for safety
-	if len(commonJson) > cfg.MaxChunkSize {
-		return nil, fmt.Errorf("common object is too large for specified chunk size. Try increasing the chunk size, given chunk size: %d, detected object size: %d", cfg.MaxChunkSize, len(commonJson))
+	if len(commonJson) > chunkSize {
+		return nil, fmt.Errorf("common object is too large for specified chunk size. Try increasing the chunk size, given chunk size: %d, detected object size: %d", chunkSize, len(commonJson))
 	}
 
 	return &Chunker{chunkSize: chunkSize, log: logEntry}, nil
