@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/chunker"
+	"github.com/edgedelta/edgedelta-forwarder/core"
 	"github.com/edgedelta/edgedelta-forwarder/enrich"
 	"github.com/edgedelta/edgedelta-forwarder/push"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
@@ -17,20 +18,11 @@ import (
 )
 
 var (
-	config   *cfg.Config
-	pusher   *push.Pusher
-	enricher *enrich.Enricher
+	config     *cfg.Config
+	pusher     *push.Pusher
+	enricher   *enrich.Enricher
+	logChunker *chunker.Chunker
 )
-
-type edCommon enrich.Common
-type edLogsData struct {
-	LogEvents []events.CloudwatchLogsLogEvent `json:"logEvents"`
-}
-
-type edLog struct {
-	edCommon
-	edLogsData
-}
 
 type HandlerFn func(context.Context, events.CloudwatchLogsEvent) error
 
@@ -84,23 +76,30 @@ func handleRequest(ctx context.Context, logsEvent events.CloudwatchLogsEvent) er
 	}
 	common := enricher.GetEDCommon(ctx, data.SubscriptionFilters, data.MessageType, data.LogGroup, data.LogStream, data.Owner)
 
-	edLog := &edLog{
-		edCommon: edCommon(*common),
-		edLogsData: edLogsData{
+	edLog := &core.Log{
+		Common: core.Common(*common),
+		Data: core.Data{
 			LogEvents: data.LogEvents,
 		},
 	}
 
-	b, err := json.Marshal(edLog)
+	logChunker, err := chunker.NewChunker(config.BatchSize, edLog)
+
+	chunks, err := logChunker.ChunkLogs()
 	if err != nil {
-		log.Printf("Failed to marshal logs, err: %v", err)
+		log.Printf("Failed to chunk logs, err: %v", err)
 		return err
 	}
-	log.Printf("Sending %d bytes of logs", len(b))
-	// blocks until context deadline
-	if err := pusher.Push(ctx, b); err != nil {
-		return err
+
+	for i, chunk := range chunks {
+		log.Printf("Sending chunk %d of %d, size: %d bytes", i+1, len(chunks), len(chunk))
+		// blocks until context deadline
+		if err := pusher.Push(ctx, chunk); err != nil {
+			log.Printf("Failed to push chunk %d, err: %v", i+1, err)
+			return err
+		}
 	}
-	log.Printf("Successfully pushed logs")
+
+	log.Printf("Successfully pushed %d log chunks", len(chunks))
 	return nil
 }

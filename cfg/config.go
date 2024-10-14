@@ -9,11 +9,18 @@ import (
 	"time"
 )
 
+const (
+	defaultPushTimeout = 10 * time.Second
+	MaxChunkSize       = 1000 * 1000 // 1MB
+	MinChunkSize       = 50 * 1000   // 50KB
+)
+
 // Config for storing all parameters
 type Config struct {
 	Region                    string
 	EDEndpoint                string
 	PushTimeout               time.Duration
+	BatchSize                 int
 	RetryInterval             time.Duration
 	ForwardForwarderTags      bool
 	ForwardSourceTags         bool
@@ -50,7 +57,28 @@ func GetConfig() (*Config, error) {
 			config.PushTimeout = time.Duration(pushTimeout) * time.Second
 		}
 	} else {
-		config.PushTimeout = 10 * time.Second
+		config.PushTimeout = defaultPushTimeout
+	}
+
+	bs := os.Getenv("ED_BATCH_SIZE")
+	if bs != "" {
+		batchSize, err := strconv.Atoi(bs)
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			if batchSize <= 0 {
+				errs = append(errs, errors.New("batch size must be greater than 0"))
+			}
+			if batchSize > MaxChunkSize {
+				errs = append(errs, fmt.Errorf("batch size must be less than or equal to %d", MaxChunkSize))
+			}
+			if batchSize < MinChunkSize {
+				errs = append(errs, fmt.Errorf("batch size must be greater than or equal to %d", MinChunkSize))
+			}
+			config.BatchSize = batchSize
+		}
+	} else {
+		config.BatchSize = MaxChunkSize
 	}
 
 	ri := os.Getenv("ED_RETRY_INTERVAL_MS")

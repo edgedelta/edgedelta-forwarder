@@ -34,6 +34,10 @@ Parameters:
     Type: Number
     Description: Push timeout is the total duration of waiting for to send one batch of logs (in seconds)
     Default: 10
+  EDBatchSize:
+    Type: Number
+    Description: BatchSize is the maximum number of log events to send in one batch
+    Default: 1000000
   EDRetryIntervalMs:
     Type: Number
     Description: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down
@@ -67,6 +71,7 @@ Resources:
           ED_FORWARD_FORWARDER_TAGS: !Ref EDForwardForwarderTags
           ED_FORWARD_LOG_GROUP_TAGS: !Ref EDForwardLogGroupTags
           ED_PUSH_TIMEOUT_SEC: !Ref EDPushTimeoutSec
+          ED_BATCH_SIZE: !Ref EDBatchSize
           ED_RETRY_INTERVAL_MS: !Ref EDRetryIntervalMs
           ED_SOURCE_TAG_PREFIXES: !Ref EDSourceTagPrefixes
       Policies:
