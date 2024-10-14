@@ -10,6 +10,7 @@ AWS lambda function to forward logs from AWS to Edge Delta agent.
 - ED_FORWARD_FORWARDER_TAGS: If set to true, forwarder lambda's own tags are fetched. Requires "tag:GetResources" permission.
 - ED_FORWARD_LOG_GROUP_TAGS: If set to true, log group tags are fetched. Requires "tag:GetResources" permission.
 - ED_PUSH_TIMEOUT_SEC: Push timeout is the total duration of waiting for to send one batch of logs (in seconds). Default is 10.
+- ED_BATCH_SIZE: Batch size defines the maximum amount of logs the forwarder will send in one batch. The default and maximum batch size is 1MB, with a minimum of 50KB.
 - ED_RETRY_INTERVAL_MS: RetryInterval is the initial interval to wait until next retry (in milliseconds). It is increased exponentially until our process is shut down. Default is 100.
 - ED_SOURCE_TAG_PREFIXES: Comma separated list of tag prefixes to be added to the source tags. For example, if ED_SOURCE_TAG_PREFIXES has "ed_forwarder=ed_fwd_", then all the forwarder tags will be prefixed with "ed_fwd_". Default is empty. Refer to mapping below for the list of tags keys.
 
