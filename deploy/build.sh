@@ -32,7 +32,7 @@ rm -rf "${project_root}/bin"
 mkdir -p "${project_root}/bin"
 
 cd "${project_root}"
-GOOS=linux GOARCH=$arch_type go build -tags lambda.norpc -o "$exe_path" main.go
+GOOS=linux GOARCH=$arch_type CGO_ENABLED=0 go build -tags lambda.norpc -o "$exe_path" main.go
 chmod +x "$exe_path"
 
 cd "${project_root}/bin"
