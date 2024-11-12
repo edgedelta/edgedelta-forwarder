@@ -58,7 +58,7 @@ jobs:
             SUCCESS=0 ./deploy/jira_notify_result.sh
 
   release_success:
-    executor: cimg-base
+    executor: edimg-build
     steps:
       - checkout
       - attach_workspace:
