@@ -82,6 +82,13 @@ jobs:
           name: Build image
           command: |
             echo "Building image"
+            GOOS=linux GOARCH=amd64 go build -tags lambda.norpc -o bootstrap main.go
+            zip ./bootstrap bootstrap
+            aws lambda create-function --function-name buraks_circleci_test \
+            --runtime provided.al2 --handler bootstrap \
+            --architectures x86_64 \
+            --role arn:aws:iam::757140585207:role/buraks-forwarder-lambda-role \
+            --zip-file fileb://bootstrap.zip
       - run:
           name: Push image
           command: |
