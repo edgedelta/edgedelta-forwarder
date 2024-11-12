@@ -73,8 +73,34 @@ jobs:
           command: |
             ./deploy/post_to_slack.sh "$CIRCLE_JOB failed. See job logs at $CIRCLE_BUILD_URL" || true
             SUCCESS=0 ./deploy/jira_notify_result.sh
+  
+  build_image:
+    executor: cimg-base
+    steps:
+      - checkout
+      - run:
+          name: Build image
+          command: |
+            echo "Building image"
+      - run:
+          name: Push image
+          command: |
+            echo "Pushing image"
+      - run:
+          name: Notify
+          command: |
+            echo "Notifying"
 
 workflows:
+  feature_wf:
+        jobs:
+            - build_image:
+                context: main
+                filters:
+                    branches:
+                        ignore: master
+                    tags:
+                        ignore: /.*/
   edgedelta_forwarder_release:
     jobs:
       - get_approval: &edgedelta_forwarder_release_filter
