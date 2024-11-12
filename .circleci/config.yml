@@ -75,7 +75,7 @@ jobs:
             SUCCESS=0 ./deploy/jira_notify_result.sh
   
   build_image:
-    executor: cimg-base
+    executor: edimg-build
     steps:
       - checkout
       - run:
