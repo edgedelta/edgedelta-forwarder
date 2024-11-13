@@ -102,7 +102,7 @@ workflows:
   feature_wf:
         jobs:
             - build_image:
-                context: main
+                context: devenv
                 filters:
                     branches:
                         ignore: master
