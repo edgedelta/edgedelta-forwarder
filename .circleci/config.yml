@@ -82,9 +82,9 @@ jobs:
           name: Build image
           command: |
             echo "Building image"
-            GOOS=linux GOARCH=amd64 go build -tags lambda.norpc -o bootstrap main.go
+            GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -o bootstrap main.go
             zip ./bootstrap bootstrap
-            aws lambda create-function --function-name buraks_circleci_test \
+            aws lambda create-function --function-name buraks_with_cgo_disabled \
             --runtime provided.al2 --handler bootstrap \
             --architectures x86_64 \
             --role arn:aws:iam::757140585207:role/buraks-forwarder-lambda-role \
