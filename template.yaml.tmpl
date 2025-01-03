@@ -50,17 +50,11 @@ Parameters:
     Type: String
     Description: Comma separated list of tag prefixes to prefix corresponding service tags. For example, `ed_forwarder=ed_fwd_,log_group=lg_` will prefix forwarder tags with `ed_fwd_` and log group tags with `lg_`.
     Default: ''
-Outputs:
-  EdgeDeltaForwarderArn:
-    Description: EdgeDeltaForwarder Function ARN
-    Value:
-      Fn::GetAtt:
-      - EdgeDeltaForwarder
-      - Arn
 Resources:
   EdgeDeltaForwarder:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Ref EDLambdaFunctionName
       Architectures: 
       - {COMPATIBLE_ARCHITECTURE}
       Description: Edge Delta lambda function to forward logs from AWS Cloudwatch to Edge Delta agent.
