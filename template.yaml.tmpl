@@ -89,6 +89,7 @@ Resources:
 
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
+    DependsOn: EdgeDeltaForwarder
     Properties:
       FunctionName: !Ref EDLambdaFunctionName
       Action: lambda:InvokeFunction
