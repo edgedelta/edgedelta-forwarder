@@ -14,6 +14,10 @@ Metadata:
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: "AWS::Serverless-2016-10-31"
 Parameters:
+  EDLambdaFunctionName:
+    Type: String
+    Description: The name of the Lambda function as it appears in the AWS Console
+    Default: EdgeDeltaForwarder
   EDEndpoint:
     Type: String
     Description: Edge Delta hosted agent endpoint
@@ -92,7 +96,7 @@ Resources:
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt EdgeDeltaForwarder.Arn
+      FunctionName: !Ref EDLambdaFunctionName
       Action: lambda:InvokeFunction
       Principal: logs.amazonaws.com
       SourceArn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
