@@ -13,6 +13,8 @@ import (
 	"github.com/edgedelta/edgedelta-forwarder/resource"
 	"github.com/edgedelta/edgedelta-forwarder/tag"
 	"github.com/edgedelta/edgedelta-forwarder/utils"
+
+	sLambda "github.com/aws/aws-sdk-go/service/lambda"
 )
 
 var resourceARNToTagsCache = make(map[string]map[string]string)
@@ -72,23 +74,37 @@ func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string
 		isSourceLambda = true
 	}
 
-	var memorySize string
-	var hostArchitecture string
-	var processRuntimeName string
+	var functionOutput *sLambda.GetFunctionOutput
 	if functionARN != "" {
 		function, err := e.lambdaCl.GetFunction(functionARN)
 		if err != nil {
 			log.Printf("Failed to get function for ARN: %s, err: %v", functionARN, err)
 		} else {
-			functionVersion = *function.Configuration.Version
-			processRuntimeName = *function.Configuration.Runtime
-			hostArchitecture = getRuntimeArchitecture(functionARN, forwarderARN, function.Configuration.Architectures)
-			memorySize = fmt.Sprintf("%d", *function.Configuration.MemorySize)
+			functionOutput = function
 		}
 	}
 
-	sourceTags, faasTags, logGroupTags := e.getAllTags(ctx, forwarderARN, logGroupARN, arnsToGetTags, arnToTagSourceMap, isSourceLambda)
+	// Overwrite function version if it exists in the function output
+	if functionOutput != nil && functionOutput.Configuration != nil && functionOutput.Configuration.Version != nil {
+		functionVersion = *functionOutput.Configuration.Version
+	}
 
+	var memorySize string
+	if functionOutput != nil && functionOutput.Configuration != nil && functionOutput.Configuration.MemorySize != nil {
+		memorySize = fmt.Sprintf("%d", *functionOutput.Configuration.MemorySize)
+	}
+
+	var processRuntimeName string
+	if functionOutput != nil && functionOutput.Configuration != nil && functionOutput.Configuration.Runtime != nil {
+		processRuntimeName = *functionOutput.Configuration.Runtime
+	}
+
+	var hostArchitecture string
+	if functionOutput != nil && functionOutput.Configuration != nil && functionOutput.Configuration.Architectures != nil {
+		hostArchitecture = getRuntimeArchitecture(functionARN, forwarderARN, functionOutput.Configuration.Architectures)
+	}
+
+	sourceTags, faasTags, logGroupTags := e.getAllTags(ctx, forwarderARN, logGroupARN, arnsToGetTags, arnToTagSourceMap, isSourceLambda)
 	return &Common{
 		Cloud: &cloud{ResourceID: getResourceID(arnsToGetTags, forwarderARN, logGroupARN), AccountID: accountID, Region: e.region},
 		Faas: &faas{
@@ -218,7 +234,6 @@ func initializeMapIfEmpty(m map[string]string) map[string]string {
 		return make(map[string]string)
 	}
 	return m
-
 }
 
 func prepareSourcePrefixMap(prefixes string) map[tag.Source]string {
