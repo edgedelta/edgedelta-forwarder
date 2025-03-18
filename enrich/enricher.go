@@ -33,6 +33,7 @@ func NewEnricher(conf *cfg.Config, resourceCl resource.Client, lambdaCl lambda.C
 		ecsCl:                ecsCl,
 		ecsContainerCacheMap: make(map[ecsContainerCacheKey]ecsContainerCachedResult),
 		ecsContainerCacheTTL: conf.ECSContainerCacheTTL,
+		ecsClusterOverride:   conf.ECSClusterOverride,
 	}
 }
 
@@ -134,7 +135,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string
 		ProcessRuntimeName: processRuntimeName,
 	}
 
-	ecsCluster, ecsContainerFromStream, ecsTaskID := parser.GetClusterContainerAndTaskIfSourceIsECS(logGroup, logStream)
+	ecsCluster, ecsContainerFromStream, ecsTaskID := parser.GetClusterContainerAndTaskIfSourceIsECS(logGroup, logStream, e.ecsClusterOverride)
 	if ecsCluster != "" {
 		container, containerList, err := e.GetECSContainerDetails(ctx, ecsCluster, ecsTaskID, ecsContainerFromStream)
 		if err != nil {

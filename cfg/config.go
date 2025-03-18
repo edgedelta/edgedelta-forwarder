@@ -28,6 +28,10 @@ type Config struct {
 	ForwardLogGroupTags       bool
 	SourceEnvironmentPrefixes string
 	ECSContainerCacheTTL      time.Duration
+	// when ecs log group name is not in expected format
+	// /ecs/{cluster_name}
+	// /ecs/{cluster_name}/{service_name}
+	ECSClusterOverride string
 }
 
 func GetConfig() (*Config, error) {
@@ -106,6 +110,7 @@ func GetConfig() (*Config, error) {
 	} else {
 		config.ECSContainerCacheTTL = defaultECSContainerCacheTTL
 	}
+	config.ECSClusterOverride = os.Getenv("ECS_CLUSTER_OVERRIDE")
 
 	config.SourceEnvironmentPrefixes = os.Getenv("ED_SOURCE_TAG_PREFIXES")
 

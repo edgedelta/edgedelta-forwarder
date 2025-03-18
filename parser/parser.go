@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/edgedelta/edgedelta-forwarder/tag"
@@ -233,23 +234,25 @@ func GetFunctionARNAndNameIfSourceIsLambda(logGroup, accountID, region string) (
 	return "", "", false
 }
 
-func GetClusterContainerAndTaskIfSourceIsECS(logGroup, logStream string) (string, string, string) {
-	trimPrefixFunc := func(prefix string) string {
-		return strings.TrimPrefix(logGroup, prefix)
-	}
-	hasPrefixFunc := func(prefix string) bool {
-		return strings.HasPrefix(logGroup, prefix)
+func GetClusterContainerAndTaskIfSourceIsECS(logGroup, logStream, overrideECSCluster string) (string, string, string) {
+	streamParts := strings.Split(logStream, "/")
+
+	var cluster string
+	if strings.HasPrefix(logGroup, "/ecs/") {
+		groupParts := strings.Split(strings.TrimPrefix(logGroup, "/ecs/"), "/")
+		cluster = groupParts[0]
 	}
 
-	if hasPrefixFunc("/ecs/") {
-		groupParts := strings.Split(trimPrefixFunc("/ecs/"), "/")
-		cluster := groupParts[0]
-
-		streamParts := strings.Split(logStream, "/")
-		// prefix/container-name/task-id
-		if len(streamParts) == 3 {
-			return cluster, streamParts[1], streamParts[2]
-		}
+	if overrideECSCluster != "" && cluster != overrideECSCluster {
+		log.Printf("Using override ECS cluster name: %s (instead of extracted: %s)",
+			overrideECSCluster, cluster)
+		cluster = overrideECSCluster
 	}
-	return "", "", ""
+
+	// prefix/container-name/task-id
+	if cluster == "" || len(streamParts) != 3 {
+		return "", "", ""
+	}
+
+	return cluster, streamParts[1], streamParts[2]
 }

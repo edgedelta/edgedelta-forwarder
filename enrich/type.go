@@ -33,6 +33,7 @@ type Enricher struct {
 	ecsContainerCacheMap  map[ecsContainerCacheKey]ecsContainerCachedResult
 	ecsContainerCacheLock sync.RWMutex
 	ecsContainerCacheTTL  time.Duration
+	ecsClusterOverride    string
 }
 
 type Common struct {
