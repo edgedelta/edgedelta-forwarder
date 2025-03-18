@@ -1,19 +1,38 @@
 package enrich
 
 import (
+	"sync"
+	"time"
+
+	"github.com/edgedelta/edgedelta-forwarder/ecs"
 	"github.com/edgedelta/edgedelta-forwarder/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
 	"github.com/edgedelta/edgedelta-forwarder/tag"
 )
 
+type ecsContainerCacheKey struct {
+	clusterName string
+	taskID      string
+}
+
+type ecsContainerCachedResult struct {
+	containerInfo *ecsContainer
+	containerList []*ecsContainer
+	expiry        time.Time
+}
+
 type Enricher struct {
-	resourceCl           resource.Client
-	lambdaCl             lambda.Client
-	region               string
-	sourcePrefixMap      map[tag.Source]string
-	forwardForwarderTags bool
-	forwardSourceTags    bool
-	forwardLogGroupTags  bool
+	resourceCl            resource.Client
+	lambdaCl              lambda.Client
+	ecsCl                 ecs.Client
+	region                string
+	sourcePrefixMap       map[tag.Source]string
+	forwardForwarderTags  bool
+	forwardSourceTags     bool
+	forwardLogGroupTags   bool
+	ecsContainerCacheMap  map[ecsContainerCacheKey]ecsContainerCachedResult
+	ecsContainerCacheLock sync.RWMutex
+	ecsContainerCacheTTL  time.Duration
 }
 
 type Common struct {
@@ -47,7 +66,20 @@ type awsLogs struct {
 	LogSubscriptionFilters []string          `json:"log.subscription_filters"`
 }
 
+type ecsContainer struct {
+	Name   string `json:"name,omitempty"`
+	ID     string `json:"id,omitempty"`
+	Image  string `json:"image,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
+type ecsContainerWrapper struct {
+	Container     *ecsContainer   `json:"container,omitempty"`
+	ContainerList []*ecsContainer `json:"container_list,omitempty"`
+}
+
 type awsCommon struct {
 	awsLogs
-	ServiceTags map[string]string `json:"service.tags,omitempty"`
+	ServiceTags map[string]string    `json:"service.tags,omitempty"`
+	ECS         *ecsContainerWrapper `json:"ecs,omitempty"`
 }

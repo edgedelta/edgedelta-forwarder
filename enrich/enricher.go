@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/ecs"
 	"github.com/edgedelta/edgedelta-forwarder/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/parser"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
@@ -19,7 +21,7 @@ import (
 
 var resourceARNToTagsCache = make(map[string]map[string]string)
 
-func NewEnricher(conf *cfg.Config, resourceCl resource.Client, lambdaCl lambda.Client) *Enricher {
+func NewEnricher(conf *cfg.Config, resourceCl resource.Client, lambdaCl lambda.Client, ecsCl ecs.Client) *Enricher {
 	return &Enricher{
 		forwardForwarderTags: conf.ForwardForwarderTags,
 		forwardSourceTags:    conf.ForwardSourceTags,
@@ -28,6 +30,9 @@ func NewEnricher(conf *cfg.Config, resourceCl resource.Client, lambdaCl lambda.C
 		region:               conf.Region,
 		resourceCl:           resourceCl,
 		lambdaCl:             lambdaCl,
+		ecsCl:                ecsCl,
+		ecsContainerCacheMap: make(map[ecsContainerCacheKey]ecsContainerCachedResult),
+		ecsContainerCacheTTL: conf.ECSContainerCacheTTL,
 	}
 }
 
@@ -105,7 +110,7 @@ func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string
 	}
 
 	sourceTags, faasTags, logGroupTags := e.getAllTags(ctx, forwarderARN, logGroupARN, arnsToGetTags, arnToTagSourceMap, isSourceLambda)
-	return &Common{
+	cm := &Common{
 		Cloud: &cloud{ResourceID: getResourceID(arnsToGetTags, forwarderARN, logGroupARN), AccountID: accountID, Region: e.region},
 		Faas: &faas{
 			Name:       functionName,
@@ -128,6 +133,19 @@ func (e *Enricher) GetEDCommon(ctx context.Context, subscriptionFilters []string
 		HostArchitecture:   hostArchitecture,
 		ProcessRuntimeName: processRuntimeName,
 	}
+
+	ecsCluster, ecsContainerFromStream, ecsTaskID := parser.GetClusterContainerAndTaskIfSourceIsECS(logGroup, logStream)
+	if ecsCluster != "" {
+		container, containerList, err := e.GetECSContainerDetails(ctx, ecsCluster, ecsTaskID, ecsContainerFromStream)
+		if err != nil {
+			log.Printf("Failed to get container ID for cluster: %s task: %s container: %s, err: %v", ecsCluster, ecsTaskID, ecsContainerFromStream, err)
+			// fallback to container name from log stream, in case DescribeTask permission is missing
+			container = &ecsContainer{Name: ecsContainerFromStream}
+		}
+		cm.AwsCommon.ECS = &ecsContainerWrapper{Container: container, ContainerList: containerList}
+	}
+
+	return cm
 }
 
 // getAllTags retrieves all the tags for the specified ARNs and populates the tag maps.
@@ -202,6 +220,96 @@ func (e *Enricher) prepareResourceTags(ctx context.Context, arns []string) {
 	resourceARNToTagsCache[tagsCacheKey] = map[string]string{}
 }
 
+func (e *Enricher) GetECSContainerDetails(ctx context.Context, clusterName, taskID, containerName string) (*ecsContainer, []*ecsContainer, error) {
+	cKey := ecsContainerCacheKey{
+		clusterName: clusterName,
+		taskID:      taskID,
+	}
+
+	// Check cache first
+	e.ecsContainerCacheLock.RLock()
+	if cached, ok := e.ecsContainerCacheMap[cKey]; ok && time.Now().Before(cached.expiry) {
+		// Cache hit
+		var foundContainer *ecsContainer
+		if cached.containerInfo != nil && cached.containerInfo.Name == containerName {
+			foundContainer = cached.containerInfo
+		} else {
+			// Search through container list if containerName doesn't match the cached containerInfo
+			for _, container := range cached.containerList {
+				if container.Name == containerName {
+					foundContainer = container
+					break
+				}
+			}
+		}
+		e.ecsContainerCacheLock.RUnlock()
+		return foundContainer, cached.containerList, nil
+	}
+	e.ecsContainerCacheLock.RUnlock()
+
+	// Cache miss, fetch from ECS Service
+	taskOutput, err := e.ecsCl.GetTaskDetails(ctx, clusterName, taskID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting task details: %v", err)
+	}
+
+	if len(taskOutput.Tasks) == 0 {
+		return nil, nil, fmt.Errorf("task %s not found in cluster %s", taskID, clusterName)
+	}
+
+	var containerList []*ecsContainer
+	var containerInfo *ecsContainer
+
+	for _, container := range taskOutput.Tasks[0].Containers {
+		container := &ecsContainer{
+			Name:   safeDeref(container.Name),
+			ID:     safeDeref(container.RuntimeId),
+			Image:  safeDeref(container.Image),
+			Status: safeDeref(container.LastStatus),
+		}
+
+		containerList = append(containerList, container)
+
+		if container.Name == containerName {
+			containerInfo = container
+		}
+	}
+
+	// Update cache
+	e.ecsContainerCacheLock.Lock()
+	e.ecsContainerCacheMap[cKey] = ecsContainerCachedResult{
+		containerInfo: containerInfo,
+		containerList: containerList,
+		expiry:        time.Now().Add(e.ecsContainerCacheTTL),
+	}
+	e.ecsContainerCacheLock.Unlock()
+
+	return containerInfo, containerList, nil
+}
+
+func (e *Enricher) StartECSContainerCacheCleanup() {
+	go func() {
+		ticker := time.NewTicker(e.ecsContainerCacheTTL / 3)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			e.CleanupExpiredEntries()
+		}
+	}()
+}
+
+func (e *Enricher) CleanupExpiredEntries() {
+	e.ecsContainerCacheLock.Lock()
+	defer e.ecsContainerCacheLock.Unlock()
+
+	now := time.Now()
+	for k, v := range e.ecsContainerCacheMap {
+		if now.After(v.expiry) {
+			delete(e.ecsContainerCacheMap, k)
+		}
+	}
+}
+
 func getTagsCacheKey(arns ...string) string {
 	return strings.Join(arns, ",")
 }
@@ -252,4 +360,11 @@ func prepareSourcePrefixMap(prefixes string) map[tag.Source]string {
 	}
 
 	return prefixMap
+}
+
+func safeDeref(ptr *string) string {
+	if ptr == nil {
+		return ""
+	}
+	return *ptr
 }

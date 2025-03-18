@@ -232,3 +232,24 @@ func GetFunctionARNAndNameIfSourceIsLambda(logGroup, accountID, region string) (
 	}
 	return "", "", false
 }
+
+func GetClusterContainerAndTaskIfSourceIsECS(logGroup, logStream string) (string, string, string) {
+	trimPrefixFunc := func(prefix string) string {
+		return strings.TrimPrefix(logGroup, prefix)
+	}
+	hasPrefixFunc := func(prefix string) bool {
+		return strings.HasPrefix(logGroup, prefix)
+	}
+
+	if hasPrefixFunc("/ecs/") {
+		groupParts := strings.Split(trimPrefixFunc("/ecs/"), "/")
+		cluster := groupParts[0]
+
+		streamParts := strings.Split(logStream, "/")
+		// prefix/container-name/task-id
+		if len(streamParts) == 3 {
+			return cluster, streamParts[1], streamParts[2]
+		}
+	}
+	return "", "", ""
+}
