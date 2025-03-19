@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
 	"github.com/edgedelta/edgedelta-forwarder/ecs"
 	"github.com/edgedelta/edgedelta-forwarder/lambda"
@@ -15,6 +14,8 @@ import (
 	"github.com/edgedelta/edgedelta-forwarder/resource"
 	"github.com/edgedelta/edgedelta-forwarder/tag"
 	"github.com/edgedelta/edgedelta-forwarder/utils"
+
+	"github.com/aws/aws-lambda-go/lambdacontext"
 
 	sLambda "github.com/aws/aws-sdk-go/service/lambda"
 )
@@ -227,9 +228,12 @@ func (e *Enricher) GetECSContainerDetails(ctx context.Context, clusterName, task
 		taskID:      taskID,
 	}
 
-	// Check cache first
+	// Get from cache with read lock
 	e.ecsContainerCacheLock.RLock()
-	if cached, ok := e.ecsContainerCacheMap[cKey]; ok && time.Now().Before(cached.expiry) {
+	cached, ok := e.ecsContainerCacheMap[cKey]
+	e.ecsContainerCacheLock.RUnlock()
+
+	if ok && time.Now().Before(cached.expiry) {
 		// Cache hit
 		var foundContainer *ecsContainer
 		if cached.containerInfo != nil && cached.containerInfo.Name == containerName {
@@ -243,10 +247,9 @@ func (e *Enricher) GetECSContainerDetails(ctx context.Context, clusterName, task
 				}
 			}
 		}
-		e.ecsContainerCacheLock.RUnlock()
+
 		return foundContainer, cached.containerList, nil
 	}
-	e.ecsContainerCacheLock.RUnlock()
 
 	// Cache miss, fetch from ECS Service
 	taskOutput, err := e.ecsCl.GetTaskDetails(ctx, clusterName, taskID)
