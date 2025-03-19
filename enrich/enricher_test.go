@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
+	"github.com/edgedelta/edgedelta-forwarder/ecs"
 	"github.com/edgedelta/edgedelta-forwarder/lambda"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
 	"github.com/edgedelta/edgedelta-forwarder/tag"
@@ -273,7 +274,7 @@ func TestGetLambdaTags(t *testing.T) {
 				resourceARNToTagsCache = make(map[string]map[string]string)
 			}()
 
-			enricher := NewEnricher(tc.config, tc.resourceClient, lambda.NewNoOpClient())
+			enricher := NewEnricher(tc.config, tc.resourceClient, lambda.NewNoOpClient(), ecs.NewNoOpClient())
 			sourceTags, faasTags, logGroupTags := enricher.getAllTags(context.Background(), forwarderARN, logGroupARN, tc.arnsToGetTags, arnToSourceMap, tc.isSourceLambda)
 			if diff := cmp.Diff(tc.wantFaasTags, faasTags); diff != "" {
 				t.Errorf("Faas tags mismatch (-want +got):\n%s", diff)

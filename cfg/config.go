@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	defaultPushTimeout = 10 * time.Second
-	MaxChunkSize       = 1000 * 1000 // 1MB
-	MinChunkSize       = 50 * 1000   // 50KB
+	defaultECSContainerCacheTTL = 300 * time.Second // 5 minutes
+	defaultPushTimeout          = 10 * time.Second
+	MaxChunkSize                = 1000 * 1000 // 1MB
+	MinChunkSize                = 50 * 1000   // 50KB
 )
 
 // Config for storing all parameters
@@ -26,6 +27,11 @@ type Config struct {
 	ForwardSourceTags         bool
 	ForwardLogGroupTags       bool
 	SourceEnvironmentPrefixes string
+	ECSContainerCacheTTL      time.Duration
+	// when ecs log group name is not in expected format
+	// /ecs/{cluster_name}
+	// /ecs/{cluster_name}/{service_name}
+	ECSClusterOverride string
 }
 
 func GetConfig() (*Config, error) {
@@ -92,6 +98,19 @@ func GetConfig() (*Config, error) {
 	} else {
 		config.RetryInterval = 100 * time.Millisecond
 	}
+
+	ecsContainerCacheTTLFromEnv := os.Getenv("ECS_CONTAINER_CACHE_TTL_SEC")
+	if ecsContainerCacheTTLFromEnv != "" {
+		ecsContainerCacheTTL, err := strconv.Atoi(ecsContainerCacheTTLFromEnv)
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			config.ECSContainerCacheTTL = time.Duration(ecsContainerCacheTTL) * time.Second
+		}
+	} else {
+		config.ECSContainerCacheTTL = defaultECSContainerCacheTTL
+	}
+	config.ECSClusterOverride = os.Getenv("ECS_CLUSTER_OVERRIDE")
 
 	config.SourceEnvironmentPrefixes = os.Getenv("ED_SOURCE_TAG_PREFIXES")
 

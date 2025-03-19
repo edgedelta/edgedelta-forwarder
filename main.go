@@ -10,6 +10,7 @@ import (
 	"github.com/edgedelta/edgedelta-forwarder/cfg"
 	"github.com/edgedelta/edgedelta-forwarder/chunker"
 	"github.com/edgedelta/edgedelta-forwarder/core"
+	"github.com/edgedelta/edgedelta-forwarder/ecs"
 	"github.com/edgedelta/edgedelta-forwarder/enrich"
 	"github.com/edgedelta/edgedelta-forwarder/push"
 	"github.com/edgedelta/edgedelta-forwarder/resource"
@@ -57,7 +58,13 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to create AWS lambda client, err: %v", err)
 	}
-	enricher = enrich.NewEnricher(config, resCl, lambdaClient)
+	ecsClient, err := ecs.NewClient()
+	if err != nil {
+		log.Fatalf("Failed to create AWS ECS client, err: %v", err)
+	}
+
+	enricher = enrich.NewEnricher(config, resCl, lambdaClient, ecsClient)
+	enricher.StartECSContainerCacheCleanup()
 
 	pusher = push.NewPusher(config)
 }
