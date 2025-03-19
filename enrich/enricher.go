@@ -251,11 +251,11 @@ func (e *Enricher) GetECSContainerDetails(ctx context.Context, clusterName, task
 	// Cache miss, fetch from ECS Service
 	taskOutput, err := e.ecsCl.GetTaskDetails(ctx, clusterName, taskID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getting task details: %v", err)
+		return nil, nil, fmt.Errorf("failed to get task details, err: %v", err)
 	}
 
 	if len(taskOutput.Tasks) == 0 {
-		return nil, nil, fmt.Errorf("task %s not found in cluster %s", taskID, clusterName)
+		return nil, nil, fmt.Errorf("task: %s not found in cluster: %s", taskID, clusterName)
 	}
 
 	var containerList []*ecsContainer
