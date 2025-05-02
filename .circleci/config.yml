@@ -4,6 +4,8 @@ executors:
   edimg-build:
     docker:
       - image: 233765244907.dkr.ecr.us-east-1.amazonaws.com/build:latest
+        aws_auth:
+          oidc_role_arn: arn:aws:iam::233765244907:role/circleci-serverless-app-publisher-role
   cimg-base:
     docker:
       - image: cimg/base:stable
@@ -43,6 +45,9 @@ jobs:
       - checkout
       - attach_workspace:
           at: /tmp/workspace
+      - aws-cli/setup:
+          role_arn: "arn:aws:iam::233765244907:role/circleci-serverless-app-publisher-role"
+          region: "us-west-2"
       - run:
           name: Build forwarder
           command: |
