@@ -1,8 +1,8 @@
 module github.com/edgedelta/edgedelta-forwarder
 
-go 1.22
+go 1.23
 
-toolchain go1.23.0
+toolchain go1.23.8
 
 require (
 	github.com/aws/aws-lambda-go v1.47.0
