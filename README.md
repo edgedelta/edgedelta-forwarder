@@ -35,7 +35,7 @@ If lambda role has "lambda:GetFunction" permission, forwarder will also get lamb
 ```
 aws lambda create-function \
     --function-name "<name_of_the_forwarder_lambda>" \
-    --runtime provided.al2 \
+    --runtime provided.al2023 \
     --handler bootstrap \
     --role "<forwarder_lambda_role_arn>" \
     --zip-file "fileb://<zipped_forwarder_lambda_path>"
